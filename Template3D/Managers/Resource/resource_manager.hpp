@@ -20,8 +20,8 @@ enum class ETextureType : Int8;
 class SResourceManager
 {
 public:
-	constexpr std::string TEXTURES_PATH = "Resources/Textures/";
-	constexpr std::string ASSETS_PATH	= "Resources/Assets/";
+	const std::string TEXTURES_PATH = "Resources/Textures/";
+	const std::string ASSETS_PATH	= "Resources/Assets/";
 
 	SResourceManager(SResourceManager&) = delete;
 
