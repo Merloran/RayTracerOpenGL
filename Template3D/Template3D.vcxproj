@@ -185,6 +185,8 @@
     <ClCompile Include="Managers\Resource\resource_manager.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Managers\Display\display_manager.cpp" />
+    <ClCompile Include="Managers\Render\render_manager.cpp" />
+    <ClCompile Include="Managers\Render\Common\shader.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\pch.hpp" />
@@ -196,6 +198,8 @@
     <ClInclude Include="Managers\Resource\Common\texture.hpp" />
     <ClInclude Include="Managers\Resource\resource_manager.hpp" />
     <ClInclude Include="Managers\Display\display_manager.hpp" />
+    <ClInclude Include="Managers\Render\render_manager.hpp" />
+    <ClInclude Include="Managers\Render\Common\shader.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

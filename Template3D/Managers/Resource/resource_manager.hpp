@@ -20,16 +20,16 @@ enum class ETextureType : Int8;
 class SResourceManager
 {
 public:
-	const std::string TEXTURES_PATH = "Resources/Textures/";
-	const std::string ASSETS_PATH	= "Resources/Assets/";
+	constexpr std::string TEXTURES_PATH = "Resources/Textures/";
+	constexpr std::string ASSETS_PATH	= "Resources/Assets/";
 
 	SResourceManager(SResourceManager&) = delete;
 
 	static SResourceManager& get();
-	void startup();
+	Void startup();
 
-	void load_gltf_asset(const std::string& filePath);
-	void load_gltf_asset(const std::filesystem::path& filePath);
+	Void load_gltf_asset(const std::string& filePath);
+	Void load_gltf_asset(const std::filesystem::path& filePath);
 
 	Handle<Model>    load_model(const std::filesystem::path & filePath, tinygltf::Mesh& gltfMesh, tinygltf::Model& gltfModel);
 	Handle<Mesh>     load_mesh(const std::string& meshName, tinygltf::Primitive& primitive, tinygltf::Model& gltfModel);
@@ -48,16 +48,16 @@ public:
 	const std::vector<Material> &get_materials() const;
 	const std::vector<Texture>  &get_textures()  const;
 
-	void shutdown();
+	Void shutdown();
 
 protected:
 	template<typename DataType, typename ArrayType>
-	void process_accessor(tinygltf::Model& gltfModel, const tinygltf::Accessor& accessor, std::vector<ArrayType>& outputData)
+	Void process_accessor(tinygltf::Model& gltfModel, const tinygltf::Accessor& accessor, std::vector<ArrayType>& outputData)
 	{
-		Int32 bufferViewId = accessor.bufferView;
+		const Int32 bufferViewId = accessor.bufferView;
 
-		tinygltf::BufferView& bufferView = gltfModel.bufferViews[bufferViewId];
-		tinygltf::Buffer& bufferData = (gltfModel.buffers[bufferView.buffer]);
+		const tinygltf::BufferView& bufferView = gltfModel.bufferViews[bufferViewId];
+		tinygltf::Buffer& bufferData = gltfModel.buffers[bufferView.buffer];
 		UInt8* dataBegin = bufferData.data.data() + accessor.byteOffset + bufferView.byteOffset;
 
 		UInt64 stride = bufferView.byteStride;
@@ -76,7 +76,6 @@ protected:
 
 private:
 	SResourceManager() = default;
-	~SResourceManager() = default;
 
 	std::unordered_map<std::string, Handle<Model>> nameToIdModels;
 	std::vector<Model> models;

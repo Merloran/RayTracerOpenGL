@@ -1,19 +1,19 @@
 #pragma once
 // Rename to be consistent with naming_convention
 
-typedef bool	 Bool;
-typedef void	 Void;
-
-typedef int8_t	 Int8;
-typedef int16_t  Int16;
-typedef int32_t  Int32;
-typedef int64_t  Int64;
-
-typedef uint8_t  UInt8;
-typedef uint16_t UInt16;
-typedef uint32_t UInt32;
-typedef uint64_t UInt64;
-
-typedef float	 Float32;
-typedef double	 Float64;
-
+using Bool    = bool;
+using Char    = char;
+using Void    = void;
+			  
+using Int8    = int8_t;
+using Int16   = int16_t;
+using Int32   = int32_t;
+using Int64   = int64_t;
+			  
+using UInt8   = uint8_t;
+using UInt16  = uint16_t;
+using UInt32  = uint32_t;
+using UInt64  = uint64_t;
+			  
+using Float32 = float;
+using Float64 = double;

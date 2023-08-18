@@ -1,4 +1,5 @@
 #include "display_manager.hpp"
+
 #include <GLFW/glfw3.h>
 
 
@@ -8,7 +9,7 @@ SDisplayManager& SDisplayManager::get()
 	return instance;
 }
 
-void SDisplayManager::startup()
+Void SDisplayManager::startup()
 {
 	SPDLOG_INFO("Display Manager startup.");
 	if (!glfwInit())
@@ -17,10 +18,15 @@ void SDisplayManager::startup()
 		return;
 	}
 
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 	window = glfwCreateWindow(windowSize.x, windowSize.y, name.c_str(), nullptr, nullptr);
+
+	glfwMakeContextCurrent(window);
 }
 
 const glm::ivec2& SDisplayManager::get_framebuffer_size()
@@ -45,12 +51,17 @@ const glm::ivec2& SDisplayManager::get_window_size()
 	return windowSize;
 }
 
-void SDisplayManager::update()
+Void SDisplayManager::update()
 {
 	glfwPollEvents();
 }
 
-bool SDisplayManager::should_window_close()
+Void SDisplayManager::close_window()
+{
+	glfwSetWindowShouldClose(window, GL_TRUE);
+}
+
+Bool SDisplayManager::should_window_close()
 {
 	if (window == nullptr)
 	{
@@ -61,7 +72,7 @@ bool SDisplayManager::should_window_close()
 	return glfwWindowShouldClose(window);
 }
 
-void SDisplayManager::shutdown()
+Void SDisplayManager::shutdown()
 {
 	SPDLOG_INFO("Display Manager shutdown.");
 	glfwDestroyWindow(window);

@@ -1,6 +1,6 @@
 #pragma once
 
-enum class ETextureType : Int8 
+enum class ETextureType : UInt8 
 {
 	None			 = 0,
 

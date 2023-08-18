@@ -13,7 +13,7 @@
 
 #include <filesystem>
 
-void SResourceManager::startup()
+Void SResourceManager::startup()
 {
 	SPDLOG_INFO("Resource Manager startup.");
 	Material defaultMaterial;
@@ -31,12 +31,12 @@ SResourceManager& SResourceManager::get()
 	return instance;
 }
 
-void SResourceManager::load_gltf_asset(const std::string& filePath)
+Void SResourceManager::load_gltf_asset(const std::string& filePath)
 {
 	load_gltf_asset(std::filesystem::path(filePath));
 }
 
-void SResourceManager::load_gltf_asset(const std::filesystem::path & filePath)
+Void SResourceManager::load_gltf_asset(const std::filesystem::path & filePath)
 {
 	tinygltf::Model gltfModel;
 	std::string error;
@@ -207,17 +207,17 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 	Int64 materialId   = materials.size() - 1;
 	Material& material = materials[materialId];
 
-	Int32 albedoId			  = gltfMaterial.pbrMetallicRoughness.baseColorTexture.index;
-	Int32 metallicRoughnessId = gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index;
-	Int32 normalId			  = gltfMaterial.normalTexture.index;
-	Int32 ambientOcclusionId  = gltfMaterial.occlusionTexture.index;
-	Int32 emissionId		  = gltfMaterial.emissiveTexture.index;
+	const Int32 albedoId			  = gltfMaterial.pbrMetallicRoughness.baseColorTexture.index;
+	const Int32 metallicRoughnessId = gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index;
+	const Int32 normalId			  = gltfMaterial.normalTexture.index;
+	const Int32 ambientOcclusionId  = gltfMaterial.occlusionTexture.index;
+	const Int32 emissionId		  = gltfMaterial.emissiveTexture.index;
 
 	if (albedoId >= 0)
 	{
 		const tinygltf::Texture& texture = gltfModel.textures[albedoId];
 		const tinygltf::Image& image = gltfModel.images[texture.source];
-		std::filesystem::path textureName = image.uri;
+		const std::filesystem::path textureName = image.uri;
 		material.albedo = load_texture(assetPath / image.uri, textureName.stem().string(), ETextureType::Albedo);
 	}
 
@@ -225,7 +225,7 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 	{
 		const tinygltf::Texture& texture = gltfModel.textures[metallicRoughnessId];
 		const tinygltf::Image& image = gltfModel.images[texture.source];
-		std::filesystem::path textureName = image.uri;
+		const std::filesystem::path textureName = image.uri;
 		material.metalness = load_texture(assetPath / image.uri, textureName.stem().string(), ETextureType::RM);
 		material.roughness = material.metalness;
 	}
@@ -234,7 +234,7 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 	{
 		const tinygltf::Texture& texture = gltfModel.textures[normalId];
 		const tinygltf::Image& image = gltfModel.images[texture.source];
-		std::filesystem::path textureName = image.uri;
+		const std::filesystem::path textureName = image.uri;
 		material.normal = load_texture(assetPath / image.uri, textureName.stem().string(), ETextureType::Normal);
 	}
 
@@ -242,7 +242,7 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 	{
 		const tinygltf::Texture& texture = gltfModel.textures[ambientOcclusionId];
 		const tinygltf::Image& image = gltfModel.images[texture.source];
-		std::filesystem::path textureName = image.uri;
+		const std::filesystem::path textureName = image.uri;
 		material.ambientOcclusion = load_texture(assetPath / image.uri, textureName.stem().string(), ETextureType::AmbientOcclusion);
 	}
 
@@ -250,7 +250,7 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 	{
 		const tinygltf::Texture& texture = gltfModel.textures[emissionId];
 		const tinygltf::Image& image = gltfModel.images[texture.source];
-		std::filesystem::path textureName = image.uri;
+		const std::filesystem::path textureName = image.uri;
 		material.emission = load_texture(assetPath / image.uri, textureName.stem().string(), ETextureType::Emission);
 	}
 
@@ -364,11 +364,11 @@ const std::vector<Texture>& SResourceManager::get_textures() const
 	return textures;
 }
 
-void SResourceManager::shutdown()
+Void SResourceManager::shutdown()
 {
 	SPDLOG_INFO("Resource Manager shutdown.");
 	nameToIdTextures.clear();
-	for (Texture& texture : textures)
+	for (const Texture& texture : textures)
 	{
 		stbi_image_free(texture.data);
 	}

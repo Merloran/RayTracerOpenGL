@@ -6,16 +6,16 @@ public:
 	SDisplayManager(SDisplayManager&) = delete;
 	static SDisplayManager& get();
 
-	void startup();
+	Void startup();
 
 	const glm::ivec2& get_framebuffer_size();
 	const glm::ivec2& get_window_size();
 
-	void update();
+	Void update();
+	Void close_window();
+	Bool should_window_close();
 
-	bool should_window_close();
-
-	void shutdown();
+	Void shutdown();
 
 private:
 	SDisplayManager() = default;
