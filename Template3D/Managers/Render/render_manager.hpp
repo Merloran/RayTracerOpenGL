@@ -5,9 +5,9 @@ public:
 	SRenderManager(SRenderManager&) = delete;
 	static SRenderManager& get();
 
-	void startup();
-
-	void shutdown();
+	Void startup();
+	Void draw_model(const struct Model& model);
+	Void shutdown();
 
 private:
 	SRenderManager() = default;

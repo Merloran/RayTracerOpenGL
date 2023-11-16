@@ -26,6 +26,11 @@ Void SDisplayManager::startup()
 
 	window = glfwCreateWindow(windowSize.x, windowSize.y, name.c_str(), nullptr, nullptr);
 
+	if (!window)
+	{
+		SPDLOG_ERROR("Failed to create window!");
+		return;
+	}
 	glfwMakeContextCurrent(window);
 }
 
@@ -51,9 +56,24 @@ const glm::ivec2& SDisplayManager::get_window_size()
 	return windowSize;
 }
 
+Float32 SDisplayManager::get_aspect_ratio() const
+{
+	if (windowSize.y == 0)
+	{
+		return 0.0f;
+	}
+
+	return Float32(windowSize.x) / Float32(windowSize.y);
+}
+
 Void SDisplayManager::update()
 {
 	glfwPollEvents();
+	glfwGetWindowSize(window, &windowSize.x, &windowSize.y);
+	glfwGetFramebufferSize(window, &framebufferSize.x, &framebufferSize.y);
+	glViewport(0, 0, windowSize.x, windowSize.y);
+	glClearColor(0.31f, 0.22f, 0.16f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 Void SDisplayManager::close_window()
@@ -70,6 +90,11 @@ Bool SDisplayManager::should_window_close()
 	}
 
 	return glfwWindowShouldClose(window);
+}
+
+GLFWwindow& SDisplayManager::get_window() const
+{
+	return *window;
 }
 
 Void SDisplayManager::shutdown()

@@ -175,6 +175,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Managers\Input\input_manager.cpp" />
+    <ClCompile Include="Managers\Render\Common\camera.cpp" />
     <ClCompile Include="Core\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
@@ -189,6 +191,9 @@
     <ClCompile Include="Managers\Render\Common\shader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Managers\Input\Common\input_key.hpp" />
+    <ClInclude Include="Managers\Input\input_manager.hpp" />
+    <ClInclude Include="Managers\Render\Common\camera.hpp" />
     <ClInclude Include="Core\pch.hpp" />
     <ClInclude Include="Core\Utilities\types.hpp" />
     <ClInclude Include="Managers\Resource\Common\handle.hpp" />

@@ -12,6 +12,7 @@
 #include "Common/texture.hpp"
 
 #include <filesystem>
+#include <glad/glad.h>
 
 Void SResourceManager::startup()
 {
@@ -56,6 +57,90 @@ Void SResourceManager::load_gltf_asset(const std::filesystem::path & filePath)
 	}
 }
 
+Void SResourceManager::generate_opengl_texture(Texture& texture)
+{
+	glGenTextures(1, &texture.gpuId);
+	glBindTexture(GL_TEXTURE_2D, texture.gpuId);
+
+	if (texture.channels == 3)
+	{
+		glTexImage2D(GL_TEXTURE_2D, 
+				     0, 
+					 GL_RGB16F, 
+					 texture.size.x, 
+					 texture.size.y,
+					 0, 
+					 GL_RGB,
+					 GL_FLOAT,
+					 texture.data);
+	}
+	else if (texture.channels == 4)
+	{
+		glTexImage2D(GL_TEXTURE_2D,
+					 0,
+					 GL_RGBA16F,
+					 texture.size.x,
+					 texture.size.y,
+					 0,
+					 GL_RGBA,
+					 GL_FLOAT,
+					 texture.data);
+	} else {
+		SPDLOG_WARN("Not supported count of channels: {}", texture.channels);
+		glDeleteTextures(1, &texture.gpuId);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		return;
+	}
+	
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+Void SResourceManager::generate_opengl_model(Model& model)
+{
+	for (const Handle<Mesh>& handle : model.meshes)
+	{
+		Mesh& mesh = get_mesh_by_handle(handle);
+
+		glGenVertexArrays(1, &mesh.gpuIds[0]);
+		glGenBuffers(1, &mesh.gpuIds[1]);
+		glGenBuffers(1, &mesh.gpuIds[2]);
+
+		glBindVertexArray(mesh.gpuIds[0]);
+		glBindBuffer(GL_ARRAY_BUFFER, mesh.gpuIds[2]);
+
+		const Int64 positionsSize = mesh.positions.size() * sizeof(glm::vec3);
+		const Int64 normalsSize = mesh.normals.size() * sizeof(glm::vec3);
+		const Int64 uvsSize = mesh.uvs.size() * sizeof(glm::vec2);
+
+		glBufferData(GL_ARRAY_BUFFER, positionsSize + normalsSize + uvsSize, nullptr, GL_STATIC_DRAW);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, positionsSize, mesh.positions.data());
+		glBufferSubData(GL_ARRAY_BUFFER, positionsSize, normalsSize, mesh.normals.data());
+		glBufferSubData(GL_ARRAY_BUFFER, positionsSize + normalsSize, uvsSize, mesh.uvs.data());
+
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.gpuIds[1]);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh.indexes.size() * sizeof(UInt32), mesh.indexes.data(), GL_STATIC_DRAW);
+
+		// Position attribute
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+		// Normal attribute
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)positionsSize);
+		// Texture position attribute
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)(positionsSize + normalsSize));
+
+		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	}
+}
+
 Handle<Model> SResourceManager::load_model(const std::filesystem::path & filePath, tinygltf::Mesh &gltfMesh, tinygltf::Model &gltfModel)
 {
 	if (nameToIdModels.find(gltfMesh.name) != nameToIdModels.end())
@@ -65,8 +150,8 @@ Handle<Model> SResourceManager::load_model(const std::filesystem::path & filePat
 	}
 
 	models.emplace_back();
-	Int64 modelId = models.size() - 1;
-	Model &model = models[modelId];
+	const Int64 modelId = models.size() - 1;
+	Model& model = models[modelId];
 
 	model.meshes.reserve(gltfMesh.primitives.size());
 	model.directory = filePath.string();
@@ -77,11 +162,17 @@ Handle<Model> SResourceManager::load_model(const std::filesystem::path & filePat
 		std::string meshName = gltfMesh.name + std::to_string(i);
 		Handle<Mesh> mesh = load_mesh(meshName, primitive, gltfModel);
 		model.meshes.push_back(mesh);
-		Handle<Material> material = load_material(filePath.parent_path(), gltfModel.materials[primitive.material], gltfModel);
+		Handle<Material> material = get_material_handle_by_name("DefaultMaterial");
+		if (primitive.material >= 0)
+		{
+			material = load_material(filePath.parent_path(),
+									 gltfModel.materials[primitive.material],
+									 gltfModel);
+		}
 		model.materials.push_back(material);
 	}
 
-	Handle<Model> modelHandle{ modelId };
+	const Handle<Model> modelHandle{ Int32(modelId) };
 	nameToIdModels[gltfMesh.name] = modelHandle;
 
 	return modelHandle;
@@ -96,50 +187,52 @@ Handle<Mesh> SResourceManager::load_mesh(const std::string& meshName, tinygltf::
 	}
 
 	meshes.emplace_back();
-	Int64 meshId = meshes.size() - 1;
-	Mesh &mesh   = meshes[meshes.size() - 1];
+	const Int64 meshId = meshes.size() - 1;
+	Mesh& mesh = meshes[meshes.size() - 1];
 
 	const tinygltf::Accessor& indexesAccessor = gltfModel.accessors[primitive.indices];
-	Int32 indexesType						  = indexesAccessor.componentType;
-	Int32 indexesTypeCount					  = indexesAccessor.type;
+	Int32 indexesType = indexesAccessor.componentType;
+	Int32 indexesTypeCount = indexesAccessor.type;
 
 	// Load indexes
 	switch (indexesType) {
-		case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: 
-		{
-			process_accessor<UInt16>(gltfModel, indexesAccessor, mesh.indexes);
-			break;
-		}
-		case TINYGLTF_COMPONENT_TYPE_SHORT: 
-		{
-			process_accessor<Int16>(gltfModel, indexesAccessor, mesh.indexes);
-			break;
-		}
-		default:
-		{
-			SPDLOG_ERROR("Mesh indexes not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", indexesType, meshName);
-			meshes.pop_back();
-			return Handle<Mesh>::sNone;
-		}	
+	case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+	{
+		process_accessor<UInt16>(gltfModel, indexesAccessor, mesh.indexes);
+		break;
+	}
+	case TINYGLTF_COMPONENT_TYPE_SHORT:
+	{
+		process_accessor<Int16>(gltfModel, indexesAccessor, mesh.indexes);
+		break;
+	}
+	default:
+	{
+		SPDLOG_ERROR("Mesh indexes not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", indexesType, meshName);
+		meshes.pop_back();
+		return Handle<Mesh>::sNone;
+	}
 	}
 
 
 	// Load positions
 	const tinygltf::Accessor& positionsAccessor = gltfModel.accessors[primitive.attributes["POSITION"]];
-	Int32 positionsType							= positionsAccessor.componentType;
-	Int32 positionsTypeCount					= positionsAccessor.type;
+	Int32 positionsType = positionsAccessor.componentType;
+	Int32 positionsTypeCount = positionsAccessor.type;
 
-	if (positionsTypeCount == TINYGLTF_TYPE_VEC3) 
+	if (positionsTypeCount == TINYGLTF_TYPE_VEC3)
 	{
-		if (positionsType == TINYGLTF_COMPONENT_TYPE_FLOAT) 
+		if (positionsType == TINYGLTF_COMPONENT_TYPE_FLOAT)
 		{
 			process_accessor<glm::vec3>(gltfModel, positionsAccessor, mesh.positions);
-		} else {
+		}
+		else {
 			SPDLOG_ERROR("Mesh positions not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", positionsType, meshName);
 			meshes.pop_back();
 			return Handle<Mesh>::sNone;
 		}
-	} else {
+	}
+	else {
 		SPDLOG_ERROR("Mesh positions not loaded, not supported type: GLTF_TYPE {}; Name {}", positionsTypeCount, meshName);
 		meshes.pop_back();
 		return Handle<Mesh>::sNone;
@@ -156,12 +249,14 @@ Handle<Mesh> SResourceManager::load_mesh(const std::string& meshName, tinygltf::
 		if (normalsType == TINYGLTF_COMPONENT_TYPE_FLOAT)
 		{
 			process_accessor<glm::vec3>(gltfModel, normalsAccessor, mesh.normals);
-		} else {
+		}
+		else {
 			SPDLOG_ERROR("Mesh normals not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", normalsType, meshName);
 			meshes.pop_back();
 			return Handle<Mesh>::sNone;
 		}
-	} else {
+	}
+	else {
 		SPDLOG_ERROR("Mesh normals not loaded, not supported type: GLTF_TYPE {}; Name {}", normalsTypeCount, meshName);
 		meshes.pop_back();
 		return Handle<Mesh>::sNone;
@@ -170,26 +265,28 @@ Handle<Mesh> SResourceManager::load_mesh(const std::string& meshName, tinygltf::
 
 	// Load uvs
 	const tinygltf::Accessor& uvsAccessor = gltfModel.accessors[primitive.attributes["TEXCOORD_0"]];
-	Int32 uvsType						  = uvsAccessor.componentType;
-	Int32 uvsTypeCount					  = uvsAccessor.type;
+	Int32 uvsType = uvsAccessor.componentType;
+	Int32 uvsTypeCount = uvsAccessor.type;
 
 	if (uvsTypeCount == TINYGLTF_TYPE_VEC2)
 	{
 		if (uvsType == TINYGLTF_COMPONENT_TYPE_FLOAT)
 		{
 			process_accessor<glm::vec2>(gltfModel, uvsAccessor, mesh.uvs);
-		} else {
+		}
+		else {
 			SPDLOG_ERROR("Mesh uvs not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", uvsType, meshName);
 			meshes.pop_back();
 			return Handle<Mesh>::sNone;
 		}
-	} else {
+	}
+	else {
 		SPDLOG_ERROR("Mesh uvs not loaded, not supported type: GLTF_TYPE {}; Name {}", uvsTypeCount, meshName);
 		meshes.pop_back();
 		return Handle<Mesh>::sNone;
 	}
 
-	Handle<Mesh> meshHandle{ meshId };
+	const Handle<Mesh> meshHandle{ Int32(meshId) };
 	nameToIdMeshes[meshName] = meshHandle;
 
 	return meshHandle;
@@ -204,8 +301,8 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 	}
 
 	materials.emplace_back();
-	Int64 materialId   = materials.size() - 1;
-	Material& material = materials[materialId];
+	const Int64 materialId = materials.size() - 1;
+	Material& material	   = materials[materialId];
 
 	const Int32 albedoId			  = gltfMaterial.pbrMetallicRoughness.baseColorTexture.index;
 	const Int32 metallicRoughnessId = gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index;
@@ -254,7 +351,7 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 		material.emission = load_texture(assetPath / image.uri, textureName.stem().string(), ETextureType::Emission);
 	}
 
-	Handle<Material> materialHandle{ materialId };
+	const Handle<Material> materialHandle{ Int32(materialId) };
 	nameToIdMaterials[gltfMaterial.name] = materialHandle;
 
 	return materialHandle;
@@ -281,7 +378,7 @@ Handle<Texture> SResourceManager::load_texture(const std::filesystem::path& file
 		return Handle<Texture>::sNone;
 	}
 
-	Handle<Texture> textureHandle{ textureId };
+	const Handle<Texture> textureHandle{ Int32(textureId) };
 	nameToIdTextures[textureName] = textureHandle;
 
 	return textureHandle;
@@ -290,7 +387,8 @@ Handle<Texture> SResourceManager::load_texture(const std::filesystem::path& file
 Handle<Material> SResourceManager::create_material(const Material& material, const std::string& name)
 {
 	materials.emplace_back(material);
-	Handle<Material> materialHandle{ materials.size() - 1 };
+	const Int64 materialId = materials.size() - 1;
+	const Handle<Material> materialHandle{ Int32(materialId) };
 	nameToIdMaterials[name] = materialHandle;
 
 	return materialHandle;
@@ -308,6 +406,16 @@ Model& SResourceManager::get_model_by_name(const std::string& name)
 	return models[iterator->second.id];
 }
 
+Model& SResourceManager::get_model_by_handle(const Handle<Model> handle)
+{
+	if (handle.id >= models.size())
+	{
+		SPDLOG_WARN("Model {} not found, returned default.", handle.id);
+		return models[0];
+	}
+	return models[handle.id];
+}
+
 Mesh& SResourceManager::get_mesh_by_name(const std::string& name)
 {
 	const auto& iterator = nameToIdMeshes.find(name);
@@ -318,6 +426,16 @@ Mesh& SResourceManager::get_mesh_by_name(const std::string& name)
 	}
 
 	return meshes[iterator->second.id];
+}
+
+Mesh& SResourceManager::get_mesh_by_handle(const Handle<Mesh> handle)
+{
+	if (handle.id >= meshes.size())
+	{
+		SPDLOG_WARN("Mesh {} not found, returned default.", handle.id);
+		return meshes[0];
+	}
+	return meshes[handle.id];
 }
 
 Material& SResourceManager::get_material_by_name(const std::string& name)
@@ -332,6 +450,21 @@ Material& SResourceManager::get_material_by_name(const std::string& name)
 	return materials[iterator->second.id];
 }
 
+Material& SResourceManager::get_material_by_handle(const Handle<Material> handle)
+{
+	if (handle.id >= materials.size())
+	{
+		SPDLOG_WARN("Material {} not found, returned default.", handle.id);
+		return materials[0];
+	}
+	return materials[handle.id];
+}
+
+Material& SResourceManager::get_default_material()
+{
+	return get_material_by_name("DefaultMaterial");
+}
+
 Texture& SResourceManager::get_texture_by_name(const std::string& name)
 {
 	const auto& iterator = nameToIdTextures.find(name);
@@ -342,6 +475,60 @@ Texture& SResourceManager::get_texture_by_name(const std::string& name)
 	}
 
 	return textures[iterator->second.id];
+}
+
+Texture& SResourceManager::get_texture_by_handle(const Handle<Texture> handle)
+{
+	if (handle.id >= textures.size())
+	{
+		SPDLOG_WARN("Texture {} not found, returned default.", handle.id);
+		return textures[0];
+	}
+	return textures[handle.id];
+}
+
+const Handle<Model>& SResourceManager::get_model_handle_by_name(const std::string& name) const
+{
+	const auto& iterator = nameToIdModels.find(name);
+	if (iterator == nameToIdModels.end())
+	{
+		SPDLOG_WARN("Model handle {} not found, returned none.", name);
+		return Handle<Model>::sNone;
+	}
+	return iterator->second;
+}
+
+const Handle<Mesh>& SResourceManager::get_mesh_handle_by_name(const std::string& name) const
+{
+	const auto& iterator = nameToIdMeshes.find(name);
+	if (iterator == nameToIdMeshes.end())
+	{
+		SPDLOG_WARN("Mesh handle {} not found, returned none.", name);
+		return Handle<Mesh>::sNone;
+	}
+	return iterator->second;
+}
+
+const Handle<Material>& SResourceManager::get_material_handle_by_name(const std::string& name) const
+{
+	const auto& iterator = nameToIdMaterials.find(name);
+	if (iterator == nameToIdMaterials.end())
+	{
+		SPDLOG_WARN("Material handle {} not found, returned none.", name);
+		return Handle<Material>::sNone;
+	}
+	return iterator->second;
+}
+
+const Handle<Texture>& SResourceManager::get_texture_handle_by_name(const std::string& name) const
+{
+	const auto& iterator = nameToIdTextures.find(name);
+	if (iterator == nameToIdTextures.end())
+	{
+		SPDLOG_WARN("Texture handle {} not found, returned none.", name);
+		return Handle<Texture>::sNone;
+	}
+	return iterator->second;
 }
 
 const std::vector<Model>& SResourceManager::get_models() const
@@ -368,9 +555,15 @@ Void SResourceManager::shutdown()
 {
 	SPDLOG_INFO("Resource Manager shutdown.");
 	nameToIdTextures.clear();
-	for (const Texture& texture : textures)
+	for (Texture& texture : textures)
 	{
+		if (texture.gpuId)
+		{
+			glDeleteTextures(1, &texture.gpuId);
+			texture.gpuId = 0;
+		}
 		stbi_image_free(texture.data);
+		texture.type = ETextureType::None;
 	}
 	textures.clear();
 
@@ -378,6 +571,17 @@ Void SResourceManager::shutdown()
 	materials.clear();
 
 	nameToIdMeshes.clear();
+	for (Mesh& mesh : meshes)
+	{
+		if (mesh.gpuIds[0])
+		{
+			glDeleteVertexArrays(1, &mesh.gpuIds[0]);
+			mesh.gpuIds[0] = 0;
+			glDeleteBuffers(2, &mesh.gpuIds[1]);
+			mesh.gpuIds[1] = 0;
+			mesh.gpuIds[2] = 0;
+		}
+	}
 	meshes.clear();
 
 	nameToIdModels.clear();

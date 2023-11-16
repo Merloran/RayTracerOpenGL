@@ -10,10 +10,12 @@ public:
 
 	const glm::ivec2& get_framebuffer_size();
 	const glm::ivec2& get_window_size();
+	Float32 get_aspect_ratio() const;
 
 	Void update();
 	Void close_window();
 	Bool should_window_close();
+	struct GLFWwindow& get_window() const;
 
 	Void shutdown();
 

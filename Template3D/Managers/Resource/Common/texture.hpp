@@ -25,4 +25,5 @@ struct Texture
 	glm::ivec2 size;
 	Int32 channels;
 	UInt8* data;
+	UInt32 gpuId{0};
 };
