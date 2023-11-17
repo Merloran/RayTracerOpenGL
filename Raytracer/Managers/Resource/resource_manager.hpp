@@ -34,8 +34,9 @@ public:
 
 	Void generate_opengl_texture(Texture& texture);
 	Void generate_opengl_model(Model& model);
+	Void generate_opengl_resources();
 
-	Handle<Model>    load_model(const std::filesystem::path & filePath, tinygltf::Mesh& gltfMesh, tinygltf::Model& gltfModel);
+	Handle<Model>    load_model(const std::filesystem::path & filePath, tinygltf::Node& gltfNode, tinygltf::Model& gltfModel);
 	Handle<Mesh>     load_mesh(const std::string& meshName, tinygltf::Primitive& primitive, tinygltf::Model& gltfModel);
 	Handle<Material> load_material(const std::filesystem::path& assetPath, tinygltf::Material& gltfMaterial, tinygltf::Model& gltfModel);
 	Handle<Texture>  load_texture(const std::filesystem::path& filePath, const std::string& textureName, ETextureType type);

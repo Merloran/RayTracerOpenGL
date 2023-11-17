@@ -1,5 +1,6 @@
 #include "render_manager.hpp"
 
+#include "Common/shader.hpp"
 #include "../Display/display_manager.hpp"
 #include "../Resource/resource_manager.hpp"
 #include "../Resource/Common/model.hpp"
@@ -12,6 +13,7 @@
 #include <imgui_impl_glfw.h>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+
 
 SRenderManager& SRenderManager::get()
 {
@@ -37,7 +39,7 @@ Void SRenderManager::startup()
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 	io.ConfigWindowsMoveFromTitleBarOnly = true;
 
-	const SDisplayManager& displayManager = SDisplayManager::get();
+	SDisplayManager& displayManager = SDisplayManager::get();
 
 	ImGui_ImplGlfw_InitForOpenGL(&displayManager.get_window(), true);
 	ImGui_ImplOpenGL3_Init("#version 460");
@@ -52,7 +54,7 @@ Void SRenderManager::startup()
 	glDepthFunc(GL_LEQUAL);
 }
 
-Void SRenderManager::draw_model(const Model& model)
+Void SRenderManager::draw_model(const Model& model, Shader& shader)
 {
 	SResourceManager& resourceManager = SResourceManager::get();
 
@@ -68,7 +70,7 @@ Void SRenderManager::draw_model(const Model& model)
 			{
 				const Texture &texture = resourceManager.get_texture_by_handle(*textureHandle);
 				std::string type(magic_enum::enum_name(texture.type));
-				// shader.set_int(type, j);
+				shader.set_int(type, j);
 				glActiveTexture(GL_TEXTURE0 + j);
 				glBindTexture(GL_TEXTURE_2D, texture.gpuId);
 			}

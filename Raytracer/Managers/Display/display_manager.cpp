@@ -22,7 +22,7 @@ Void SDisplayManager::startup()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
 	window = glfwCreateWindow(windowSize.x, windowSize.y, name.c_str(), nullptr, nullptr);
 
@@ -34,15 +34,15 @@ Void SDisplayManager::startup()
 	glfwMakeContextCurrent(window);
 }
 
-const glm::ivec2& SDisplayManager::get_framebuffer_size()
+const glm::ivec2& SDisplayManager::get_frame_buffer_size()
 {
 	if (window == nullptr)
 	{
 		SPDLOG_ERROR("Window is null!");
 		return { -1, -1 };
 	}
-	glfwGetFramebufferSize(window, &framebufferSize.x, &framebufferSize.y);
-	return framebufferSize;
+	glfwGetFramebufferSize(window, &frameBufferSize.x, &frameBufferSize.y);
+	return frameBufferSize;
 }
 
 const glm::ivec2& SDisplayManager::get_window_size()
@@ -66,14 +66,22 @@ Float32 SDisplayManager::get_aspect_ratio() const
 	return Float32(windowSize.x) / Float32(windowSize.y);
 }
 
-Void SDisplayManager::update()
+Void SDisplayManager::poll_events()
 {
 	glfwPollEvents();
 	glfwGetWindowSize(window, &windowSize.x, &windowSize.y);
-	glfwGetFramebufferSize(window, &framebufferSize.x, &framebufferSize.y);
+	glfwGetFramebufferSize(window, &frameBufferSize.x, &frameBufferSize.y);
 	glViewport(0, 0, windowSize.x, windowSize.y);
-	glClearColor(0.31f, 0.22f, 0.16f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+Void SDisplayManager::make_context_current()
+{
+	glfwMakeContextCurrent(window);
+}
+
+Void SDisplayManager::swap_buffers()
+{
+	glfwSwapBuffers(window);
 }
 
 Void SDisplayManager::close_window()
@@ -92,7 +100,7 @@ Bool SDisplayManager::should_window_close()
 	return glfwWindowShouldClose(window);
 }
 
-GLFWwindow& SDisplayManager::get_window() const
+GLFWwindow& SDisplayManager::get_window()
 {
 	return *window;
 }

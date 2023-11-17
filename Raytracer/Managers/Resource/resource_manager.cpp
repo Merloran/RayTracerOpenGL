@@ -51,9 +51,13 @@ Void SResourceManager::load_gltf_asset(const std::filesystem::path & filePath)
 		return;
 	}
 
-	for (tinygltf::Mesh& gltfMesh : gltfModel.meshes)
+	for (tinygltf::Node& gltfNode : gltfModel.nodes)
 	{
-		load_model(filePath, gltfMesh, gltfModel);
+		if (gltfNode.mesh == -1)
+		{
+			continue;
+		}
+		load_model(filePath, gltfNode, gltfModel);
 	}
 }
 
@@ -64,26 +68,26 @@ Void SResourceManager::generate_opengl_texture(Texture& texture)
 
 	if (texture.channels == 3)
 	{
-		glTexImage2D(GL_TEXTURE_2D, 
-				     0, 
-					 GL_RGB16F, 
-					 texture.size.x, 
-					 texture.size.y,
-					 0, 
+		glTexImage2D(GL_TEXTURE_2D,
+					 0,
 					 GL_RGB,
-					 GL_FLOAT,
+					 texture.size.x,
+					 texture.size.y,
+					 0,
+					 GL_RGB,
+					 GL_UNSIGNED_BYTE,
 					 texture.data);
 	}
 	else if (texture.channels == 4)
 	{
 		glTexImage2D(GL_TEXTURE_2D,
 					 0,
-					 GL_RGBA16F,
+					 GL_RGBA,
 					 texture.size.x,
 					 texture.size.y,
 					 0,
 					 GL_RGBA,
-					 GL_FLOAT,
+					 GL_UNSIGNED_BYTE,
 					 texture.data);
 	} else {
 		SPDLOG_WARN("Not supported count of channels: {}", texture.channels);
@@ -91,9 +95,9 @@ Void SResourceManager::generate_opengl_texture(Texture& texture)
 		glBindTexture(GL_TEXTURE_2D, 0);
 		return;
 	}
-	
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
@@ -141,13 +145,27 @@ Void SResourceManager::generate_opengl_model(Model& model)
 	}
 }
 
-Handle<Model> SResourceManager::load_model(const std::filesystem::path & filePath, tinygltf::Mesh &gltfMesh, tinygltf::Model &gltfModel)
+Void SResourceManager::generate_opengl_resources()
 {
-	if (nameToIdModels.find(gltfMesh.name) != nameToIdModels.end())
+	for (Model& model : models)
 	{
-		SPDLOG_ERROR("Model with name {} already exist!", gltfMesh.name);
-		return Handle<Model>::sNone;
+		generate_opengl_model(model);
 	}
+	for (Texture& texture : textures)
+	{
+		generate_opengl_texture(texture);
+	}
+}
+
+Handle<Model> SResourceManager::load_model(const std::filesystem::path &filePath, tinygltf::Node &gltfNode, tinygltf::Model &gltfModel)
+{
+	if (nameToIdModels.find(gltfNode.name) != nameToIdModels.end())
+	{
+		SPDLOG_WARN("Model with name {} already exist!", gltfNode.name);
+		//TODO: think of it
+		return get_model_handle_by_name(gltfNode.name);
+	}
+	tinygltf::Mesh& gltfMesh = gltfModel.meshes[gltfNode.mesh];
 
 	models.emplace_back();
 	const Int64 modelId = models.size() - 1;
@@ -159,7 +177,7 @@ Handle<Model> SResourceManager::load_model(const std::filesystem::path & filePat
 	for (Int32 i = 0; i < gltfMesh.primitives.size(); i++)
 	{
 		tinygltf::Primitive& primitive = gltfMesh.primitives[i];
-		std::string meshName = gltfMesh.name + std::to_string(i);
+		std::string meshName = gltfNode.name + std::to_string(i);
 		Handle<Mesh> mesh = load_mesh(meshName, primitive, gltfModel);
 		model.meshes.push_back(mesh);
 		Handle<Material> material = get_material_handle_by_name("DefaultMaterial");
@@ -173,7 +191,7 @@ Handle<Model> SResourceManager::load_model(const std::filesystem::path & filePat
 	}
 
 	const Handle<Model> modelHandle{ Int32(modelId) };
-	nameToIdModels[gltfMesh.name] = modelHandle;
+	nameToIdModels[gltfNode.name] = modelHandle;
 
 	return modelHandle;
 }
@@ -182,8 +200,9 @@ Handle<Mesh> SResourceManager::load_mesh(const std::string& meshName, tinygltf::
 {
 	if (nameToIdMeshes.find(meshName) != nameToIdMeshes.end())
 	{
-		SPDLOG_ERROR("Mesh with name {} already exist!", meshName);
-		return Handle<Mesh>::sNone;
+		SPDLOG_WARN("Mesh with name {} already exist!", meshName);
+		//TODO: think of it
+		return get_mesh_handle_by_name(meshName);
 	}
 
 	meshes.emplace_back();
@@ -195,48 +214,58 @@ Handle<Mesh> SResourceManager::load_mesh(const std::string& meshName, tinygltf::
 	Int32 indexesTypeCount = indexesAccessor.type;
 
 	// Load indexes
-	switch (indexesType) {
-	case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+	if (indexesTypeCount != TINYGLTF_TYPE_SCALAR)
 	{
-		process_accessor<UInt16>(gltfModel, indexesAccessor, mesh.indexes);
-		break;
-	}
-	case TINYGLTF_COMPONENT_TYPE_SHORT:
-	{
-		process_accessor<Int16>(gltfModel, indexesAccessor, mesh.indexes);
-		break;
-	}
-	default:
-	{
-		SPDLOG_ERROR("Mesh indexes not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", indexesType, meshName);
+		SPDLOG_ERROR("Mesh indexes not loaded, not supported type: GLTF_TYPE {}; Name {}", indexesTypeCount, meshName);
 		meshes.pop_back();
 		return Handle<Mesh>::sNone;
 	}
+	
+	switch (indexesType)
+	{
+		case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+		{
+			process_accessor<UInt16>(gltfModel, indexesAccessor, mesh.indexes);
+			break;
+		}
+		case TINYGLTF_COMPONENT_TYPE_SHORT:
+		{
+			process_accessor<Int16>(gltfModel, indexesAccessor, mesh.indexes);
+			break;
+		}
+		case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
+		{
+			process_accessor<UInt32>(gltfModel, indexesAccessor, mesh.indexes);
+			break;
+		}
+		default:
+		{
+			SPDLOG_ERROR("Mesh indexes not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", indexesType, meshName);
+			meshes.pop_back();
+			return Handle<Mesh>::sNone;
+		}
 	}
-
 
 	// Load positions
 	const tinygltf::Accessor& positionsAccessor = gltfModel.accessors[primitive.attributes["POSITION"]];
 	Int32 positionsType = positionsAccessor.componentType;
 	Int32 positionsTypeCount = positionsAccessor.type;
 
-	if (positionsTypeCount == TINYGLTF_TYPE_VEC3)
+	if (positionsTypeCount != TINYGLTF_TYPE_VEC3)
 	{
-		if (positionsType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-		{
-			process_accessor<glm::vec3>(gltfModel, positionsAccessor, mesh.positions);
-		}
-		else {
-			SPDLOG_ERROR("Mesh positions not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", positionsType, meshName);
-			meshes.pop_back();
-			return Handle<Mesh>::sNone;
-		}
-	}
-	else {
 		SPDLOG_ERROR("Mesh positions not loaded, not supported type: GLTF_TYPE {}; Name {}", positionsTypeCount, meshName);
 		meshes.pop_back();
 		return Handle<Mesh>::sNone;
 	}
+
+	if (positionsType != TINYGLTF_COMPONENT_TYPE_FLOAT)
+	{
+		SPDLOG_ERROR("Mesh positions not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", positionsType, meshName);
+		meshes.pop_back();
+		return Handle<Mesh>::sNone;
+	}
+
+	process_accessor<glm::vec3>(gltfModel, positionsAccessor, mesh.positions);
 
 
 	// Load normals
@@ -244,23 +273,21 @@ Handle<Mesh> SResourceManager::load_mesh(const std::string& meshName, tinygltf::
 	Int32 normalsType = normalsAccessor.componentType;
 	Int32 normalsTypeCount = normalsAccessor.type;
 
-	if (normalsTypeCount == TINYGLTF_TYPE_VEC3)
+	if (normalsTypeCount != TINYGLTF_TYPE_VEC3)
 	{
-		if (normalsType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-		{
-			process_accessor<glm::vec3>(gltfModel, normalsAccessor, mesh.normals);
-		}
-		else {
-			SPDLOG_ERROR("Mesh normals not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", normalsType, meshName);
-			meshes.pop_back();
-			return Handle<Mesh>::sNone;
-		}
-	}
-	else {
 		SPDLOG_ERROR("Mesh normals not loaded, not supported type: GLTF_TYPE {}; Name {}", normalsTypeCount, meshName);
 		meshes.pop_back();
 		return Handle<Mesh>::sNone;
 	}
+
+	if (normalsType != TINYGLTF_COMPONENT_TYPE_FLOAT)
+	{
+		SPDLOG_ERROR("Mesh normals not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", normalsType, meshName);
+		meshes.pop_back();
+		return Handle<Mesh>::sNone;
+	}
+
+	process_accessor<glm::vec3>(gltfModel, normalsAccessor, mesh.normals);
 
 
 	// Load uvs
@@ -268,23 +295,21 @@ Handle<Mesh> SResourceManager::load_mesh(const std::string& meshName, tinygltf::
 	Int32 uvsType = uvsAccessor.componentType;
 	Int32 uvsTypeCount = uvsAccessor.type;
 
-	if (uvsTypeCount == TINYGLTF_TYPE_VEC2)
+	if (uvsTypeCount != TINYGLTF_TYPE_VEC2)
 	{
-		if (uvsType == TINYGLTF_COMPONENT_TYPE_FLOAT)
-		{
-			process_accessor<glm::vec2>(gltfModel, uvsAccessor, mesh.uvs);
-		}
-		else {
-			SPDLOG_ERROR("Mesh uvs not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", uvsType, meshName);
-			meshes.pop_back();
-			return Handle<Mesh>::sNone;
-		}
-	}
-	else {
 		SPDLOG_ERROR("Mesh uvs not loaded, not supported type: GLTF_TYPE {}; Name {}", uvsTypeCount, meshName);
 		meshes.pop_back();
 		return Handle<Mesh>::sNone;
 	}
+
+	if (uvsType != TINYGLTF_COMPONENT_TYPE_FLOAT)
+	{
+		SPDLOG_ERROR("Mesh uvs not loaded, not supported type: GLTF_COMPONENT_TYPE {}; Name {}", uvsType, meshName);
+		meshes.pop_back();
+		return Handle<Mesh>::sNone;
+	}
+
+	process_accessor<glm::vec2>(gltfModel, uvsAccessor, mesh.uvs);
 
 	const Handle<Mesh> meshHandle{ Int32(meshId) };
 	nameToIdMeshes[meshName] = meshHandle;
@@ -296,8 +321,9 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 {
 	if (nameToIdMaterials.find(gltfMaterial.name) != nameToIdMaterials.end())
 	{
-		SPDLOG_ERROR("Material with name {} already exist!", gltfMaterial.name);
-		return Handle<Material>::sNone;
+		SPDLOG_WARN("Material with name {} already exist!", gltfMaterial.name);
+		//TODO: think of it
+		return get_material_handle_by_name(gltfMaterial.name);
 	}
 
 	materials.emplace_back();
@@ -305,10 +331,10 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 	Material& material	   = materials[materialId];
 
 	const Int32 albedoId			  = gltfMaterial.pbrMetallicRoughness.baseColorTexture.index;
-	const Int32 metallicRoughnessId = gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index;
+	const Int32 metallicRoughnessId   = gltfMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index;
 	const Int32 normalId			  = gltfMaterial.normalTexture.index;
-	const Int32 ambientOcclusionId  = gltfMaterial.occlusionTexture.index;
-	const Int32 emissionId		  = gltfMaterial.emissiveTexture.index;
+	const Int32 ambientOcclusionId    = gltfMaterial.occlusionTexture.index;
+	const Int32 emissionId		      = gltfMaterial.emissiveTexture.index;
 
 	if (albedoId >= 0)
 	{
@@ -361,8 +387,9 @@ Handle<Texture> SResourceManager::load_texture(const std::filesystem::path& file
 {
 	if (nameToIdTextures.find(textureName) != nameToIdTextures.end())
 	{
-		SPDLOG_ERROR("Texture with name {} already exist!", textureName);
-		return Handle<Texture>::sNone;
+		SPDLOG_WARN("Texture with name {} already exist!", textureName);
+		//TODO: think of it
+		return get_texture_handle_by_name(textureName);
 	}
 
 	textures.emplace_back();
@@ -408,7 +435,7 @@ Model& SResourceManager::get_model_by_name(const std::string& name)
 
 Model& SResourceManager::get_model_by_handle(const Handle<Model> handle)
 {
-	if (handle.id >= models.size())
+	if (handle.id < 0 || handle.id >= models.size())
 	{
 		SPDLOG_WARN("Model {} not found, returned default.", handle.id);
 		return models[0];
@@ -430,7 +457,7 @@ Mesh& SResourceManager::get_mesh_by_name(const std::string& name)
 
 Mesh& SResourceManager::get_mesh_by_handle(const Handle<Mesh> handle)
 {
-	if (handle.id >= meshes.size())
+	if (handle.id < 0 || handle.id >= meshes.size())
 	{
 		SPDLOG_WARN("Mesh {} not found, returned default.", handle.id);
 		return meshes[0];
@@ -452,7 +479,7 @@ Material& SResourceManager::get_material_by_name(const std::string& name)
 
 Material& SResourceManager::get_material_by_handle(const Handle<Material> handle)
 {
-	if (handle.id >= materials.size())
+	if (handle.id < 0 || handle.id >= materials.size())
 	{
 		SPDLOG_WARN("Material {} not found, returned default.", handle.id);
 		return materials[0];
@@ -479,7 +506,7 @@ Texture& SResourceManager::get_texture_by_name(const std::string& name)
 
 Texture& SResourceManager::get_texture_by_handle(const Handle<Texture> handle)
 {
-	if (handle.id >= textures.size())
+	if (handle.id < 0 || handle.id >= textures.size())
 	{
 		SPDLOG_WARN("Texture {} not found, returned default.", handle.id);
 		return textures[0];
@@ -515,7 +542,7 @@ const Handle<Material>& SResourceManager::get_material_handle_by_name(const std:
 	if (iterator == nameToIdMaterials.end())
 	{
 		SPDLOG_WARN("Material handle {} not found, returned none.", name);
-		return Handle<Material>::sNone;
+		return get_material_handle_by_name("DefaultMaterial");
 	}
 	return iterator->second;
 }

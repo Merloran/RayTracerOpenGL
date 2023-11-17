@@ -1,5 +1,7 @@
 #pragma once
 
+struct GLFWwindow;
+
 class SDisplayManager
 {
 public:
@@ -8,14 +10,16 @@ public:
 
 	Void startup();
 
-	const glm::ivec2& get_framebuffer_size();
+	const glm::ivec2& get_frame_buffer_size();
 	const glm::ivec2& get_window_size();
 	Float32 get_aspect_ratio() const;
 
-	Void update();
+	Void poll_events();
+	Void make_context_current();
+	Void swap_buffers();
 	Void close_window();
 	Bool should_window_close();
-	struct GLFWwindow& get_window() const;
+	GLFWwindow& get_window();
 
 	Void shutdown();
 
@@ -24,8 +28,8 @@ private:
 	~SDisplayManager() = default;
 
 	std::string name		  = "BaseWindow";
-	struct GLFWwindow* window = nullptr;
+	GLFWwindow* window		  = nullptr;
 	glm::ivec2 windowSize	  = { 1024, 768 };
-	glm::ivec2 framebufferSize;
+	glm::ivec2 frameBufferSize;
 };
 

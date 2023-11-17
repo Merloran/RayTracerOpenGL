@@ -1,4 +1,7 @@
 #pragma once
+
+class Shader;
+struct Model;
 class SRenderManager
 {
 public:
@@ -6,7 +9,7 @@ public:
 	static SRenderManager& get();
 
 	Void startup();
-	Void draw_model(const struct Model& model);
+	Void draw_model(const Model& model, Shader &shader);
 	Void shutdown();
 
 private:

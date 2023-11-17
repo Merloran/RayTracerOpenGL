@@ -19,6 +19,6 @@ private:
 	glm::vec2 mousePosition{};
 	glm::vec2 mouseDelta{};
 
-	std::unordered_map<EInputKey, float> keyState{};
+	std::unordered_map<EInputKey, Float32> keyState{};
 };
 
