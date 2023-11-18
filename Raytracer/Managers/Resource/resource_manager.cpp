@@ -18,12 +18,14 @@ Void SResourceManager::startup()
 {
 	SPDLOG_INFO("Resource Manager startup.");
 	Material defaultMaterial;
+	defaultMaterial.name = "DefaultMaterial";
 	defaultMaterial.albedo			 = load_texture(TEXTURES_PATH + "Default/Albedo.png", "DefaultBaseColor", ETextureType::Albedo);
 	defaultMaterial.normal			 = load_texture(TEXTURES_PATH + "Default/Normal.png", "DefaultNormal", ETextureType::Normal);
 	defaultMaterial.roughness		 = load_texture(TEXTURES_PATH + "Default/Roughness.png", "DefaultRoughness", ETextureType::Roughness);
 	defaultMaterial.metalness		 = load_texture(TEXTURES_PATH + "Default/Metalness.png", "DefaultMetalness", ETextureType::Metalness);
 	defaultMaterial.ambientOcclusion = load_texture(TEXTURES_PATH + "Default/AmbientOcclusion.png", "DefaultAmbientOcclusion", ETextureType::AmbientOcclusion);
-	create_material(defaultMaterial, "DefaultMaterial");
+	Handle<Material> handle = create_material(defaultMaterial, defaultMaterial.name);
+	load_gltf_asset(ASSETS_PATH + "Default/Default.gltf");
 }
 
 SResourceManager& SResourceManager::get()
@@ -53,7 +55,8 @@ Void SResourceManager::load_gltf_asset(const std::filesystem::path & filePath)
 
 	for (tinygltf::Node& gltfNode : gltfModel.nodes)
 	{
-		if (gltfNode.mesh == -1)
+		//TODO: change it later
+		if (gltfNode.mesh == -1) //Skip nodes without meshes
 		{
 			continue;
 		}
@@ -104,52 +107,68 @@ Void SResourceManager::generate_opengl_texture(Texture& texture)
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+Void SResourceManager::generate_opengl_material(Material& material)
+{
+	Handle<Texture>* textureHandle = &material.albedo;
+	const Int32 texturesCount = (offsetof(Material, opacity) - offsetof(Material, albedo)) / sizeof(Handle<Texture>);
+	for (Int32 j = 0; j < texturesCount; ++j, ++textureHandle)
+	{
+		if (*textureHandle != Handle<Texture>::sNone)
+		{
+			generate_opengl_texture(get_texture_by_handle(*textureHandle));
+		}
+	}
+}
+
+Void SResourceManager::generate_opengl_mesh(Mesh& mesh)
+{
+	glGenVertexArrays(1, &mesh.gpuIds[0]);
+	glGenBuffers(1, &mesh.gpuIds[1]);
+	glGenBuffers(1, &mesh.gpuIds[2]);
+
+	glBindVertexArray(mesh.gpuIds[0]);
+	glBindBuffer(GL_ARRAY_BUFFER, mesh.gpuIds[2]);
+
+	const Int64 positionsSize = mesh.positions.size() * sizeof(glm::vec3);
+	const Int64 normalsSize = mesh.normals.size() * sizeof(glm::vec3);
+	const Int64 uvsSize = mesh.uvs.size() * sizeof(glm::vec2);
+
+	glBufferData(GL_ARRAY_BUFFER, positionsSize + normalsSize + uvsSize, nullptr, GL_STATIC_DRAW);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, positionsSize, mesh.positions.data());
+	glBufferSubData(GL_ARRAY_BUFFER, positionsSize, normalsSize, mesh.normals.data());
+	glBufferSubData(GL_ARRAY_BUFFER, positionsSize + normalsSize, uvsSize, mesh.uvs.data());
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.gpuIds[1]);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh.indexes.size() * sizeof(UInt32), mesh.indexes.data(), GL_STATIC_DRAW);
+
+	// Position attribute
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+	// Normal attribute
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)positionsSize);
+	// Texture position attribute
+	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)(positionsSize + normalsSize));
+
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+
 Void SResourceManager::generate_opengl_model(Model& model)
 {
 	for (const Handle<Mesh>& handle : model.meshes)
 	{
-		Mesh& mesh = get_mesh_by_handle(handle);
-
-		glGenVertexArrays(1, &mesh.gpuIds[0]);
-		glGenBuffers(1, &mesh.gpuIds[1]);
-		glGenBuffers(1, &mesh.gpuIds[2]);
-
-		glBindVertexArray(mesh.gpuIds[0]);
-		glBindBuffer(GL_ARRAY_BUFFER, mesh.gpuIds[2]);
-
-		const Int64 positionsSize = mesh.positions.size() * sizeof(glm::vec3);
-		const Int64 normalsSize = mesh.normals.size() * sizeof(glm::vec3);
-		const Int64 uvsSize = mesh.uvs.size() * sizeof(glm::vec2);
-
-		glBufferData(GL_ARRAY_BUFFER, positionsSize + normalsSize + uvsSize, nullptr, GL_STATIC_DRAW);
-		glBufferSubData(GL_ARRAY_BUFFER, 0, positionsSize, mesh.positions.data());
-		glBufferSubData(GL_ARRAY_BUFFER, positionsSize, normalsSize, mesh.normals.data());
-		glBufferSubData(GL_ARRAY_BUFFER, positionsSize + normalsSize, uvsSize, mesh.uvs.data());
-
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.gpuIds[1]);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, mesh.indexes.size() * sizeof(UInt32), mesh.indexes.data(), GL_STATIC_DRAW);
-
-		// Position attribute
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
-		// Normal attribute
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)positionsSize);
-		// Texture position attribute
-		glEnableVertexAttribArray(2);
-		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), (void*)(positionsSize + normalsSize));
-
-		glBindVertexArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		generate_opengl_mesh(get_mesh_by_handle(handle));
 	}
 }
 
 Void SResourceManager::generate_opengl_resources()
 {
-	for (Model& model : models)
+	for (Mesh& mesh : meshes)
 	{
-		generate_opengl_model(model);
+		generate_opengl_mesh(mesh);
 	}
 	for (Texture& texture : textures)
 	{
@@ -192,6 +211,7 @@ Handle<Model> SResourceManager::load_model(const std::filesystem::path &filePath
 
 	const Handle<Model> modelHandle{ Int32(modelId) };
 	nameToIdModels[gltfNode.name] = modelHandle;
+	model.name = gltfNode.name;
 
 	return modelHandle;
 }
@@ -313,6 +333,7 @@ Handle<Mesh> SResourceManager::load_mesh(const std::string& meshName, tinygltf::
 
 	const Handle<Mesh> meshHandle{ Int32(meshId) };
 	nameToIdMeshes[meshName] = meshHandle;
+	mesh.name = meshName;
 
 	return meshHandle;
 }
@@ -379,6 +400,7 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 
 	const Handle<Material> materialHandle{ Int32(materialId) };
 	nameToIdMaterials[gltfMaterial.name] = materialHandle;
+	material.name = gltfMaterial.name;
 
 	return materialHandle;
 }
@@ -407,6 +429,7 @@ Handle<Texture> SResourceManager::load_texture(const std::filesystem::path& file
 
 	const Handle<Texture> textureHandle{ Int32(textureId) };
 	nameToIdTextures[textureName] = textureHandle;
+	texture.name = textureName;
 
 	return textureHandle;
 }
@@ -417,7 +440,6 @@ Handle<Material> SResourceManager::create_material(const Material& material, con
 	const Int64 materialId = materials.size() - 1;
 	const Handle<Material> materialHandle{ Int32(materialId) };
 	nameToIdMaterials[name] = materialHandle;
-
 	return materialHandle;
 }
 

@@ -48,7 +48,16 @@ Void SRenderManager::startup()
 	ImGui::StyleColorsDark();
 	ImGuiStyle& style = ImGui::GetStyle();
 	style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-	
+	Int32 flags;
+	glGetIntegerv(GL_CONTEXT_FLAGS, &flags);
+	if (flags & GL_CONTEXT_FLAG_DEBUG_BIT)
+	{
+		glEnable(GL_DEBUG_OUTPUT);
+		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+		glDebugMessageCallback(gl_debug, nullptr);
+		glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
+	}
+
 	glEnable(GL_CULL_FACE);
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LEQUAL);
@@ -64,7 +73,8 @@ Void SRenderManager::draw_model(const Model& model, Shader& shader)
 		Material &material = resourceManager.get_material_by_handle(model.materials[i]);
 
 		Handle<Texture> *textureHandle = &material.albedo;
-		for (Int32 j = 0; j < sizeof(Material) / sizeof(Handle<Texture>); ++j, ++textureHandle)
+		const Int32 texturesCount = (offsetof(Material, opacity) - offsetof(Material, albedo)) / sizeof(Handle<Texture>);
+		for (Int32 j = 0; j < texturesCount; ++j, ++textureHandle)
 		{
 			if (*textureHandle != Handle<Texture>::sNone)
 			{
@@ -83,6 +93,140 @@ Void SRenderManager::draw_model(const Model& model, Shader& shader)
 	glBindVertexArray(0);
 	glActiveTexture(GL_TEXTURE0);
     
+}
+
+Void SRenderManager::gl_debug(UInt32 source, UInt32 type, UInt32 id, UInt32 severity,
+							  Int32 length, const Char* message, const Void* userParam)
+{
+	// ignore non-significant error/warning codes
+	if (id == 131169 || id == 131185 || id == 131218 || id == 131204)
+	{
+		return;
+	}
+
+	SPDLOG_INFO("Debug message ({}): {}", id, message);
+
+	switch (source)
+	{
+		case GL_DEBUG_SOURCE_API:
+		{
+			SPDLOG_INFO("Source: API");
+			break;
+		}
+		case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
+		{
+			SPDLOG_INFO("Source: Window System");
+			break;
+		}
+		case GL_DEBUG_SOURCE_SHADER_COMPILER:
+		{
+			SPDLOG_INFO("Source: Shader Compiler");
+			break;
+		}
+		case GL_DEBUG_SOURCE_THIRD_PARTY:
+		{
+			SPDLOG_INFO("Source: Third Party");
+			break;
+		}
+		case GL_DEBUG_SOURCE_APPLICATION:
+		{
+			SPDLOG_INFO("Source: Application");
+			break;
+		}
+		case GL_DEBUG_SOURCE_OTHER:
+		{
+			SPDLOG_INFO("Source: Other");
+			break;
+		}
+		default:
+		{
+			SPDLOG_ERROR("NOT SUPPORTED");
+			break;
+		}
+	}
+
+	switch (type)
+	{
+		case GL_DEBUG_TYPE_ERROR:
+		{
+			SPDLOG_INFO("Type: Error");
+			break;
+		}
+		case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
+		{
+			SPDLOG_INFO("Type: Deprecated Behaviour");
+			break;
+		}
+		case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
+		{
+			SPDLOG_INFO("Type: Undefined Behaviour");
+			break;
+		}
+		case GL_DEBUG_TYPE_PORTABILITY:
+		{
+			SPDLOG_INFO("Type: Portability");
+			break;
+		}
+		case GL_DEBUG_TYPE_PERFORMANCE:
+		{
+			SPDLOG_INFO("Type: Performance");
+			break;
+		}
+		case GL_DEBUG_TYPE_MARKER:
+		{
+			SPDLOG_INFO("Type: Marker");
+			break;
+		}
+		case GL_DEBUG_TYPE_PUSH_GROUP:
+		{
+			SPDLOG_INFO("Type: Push Group");
+			break;
+		}
+		case GL_DEBUG_TYPE_POP_GROUP:
+		{
+			SPDLOG_INFO("Type: Pop Group");
+			break;
+		}
+		case GL_DEBUG_TYPE_OTHER:
+		{
+			SPDLOG_INFO("Type: Other");
+			break;
+		}
+		default:
+		{
+			SPDLOG_ERROR("NOT SUPPORTED");
+			break;
+		}
+	}
+
+	switch (severity)
+	{
+		case GL_DEBUG_SEVERITY_HIGH:
+		{
+			SPDLOG_INFO("Severity: high");
+			break;
+		}
+		case GL_DEBUG_SEVERITY_MEDIUM:
+		{
+			SPDLOG_INFO("Severity: medium");
+			break;
+		}
+		case GL_DEBUG_SEVERITY_LOW:
+		{
+			SPDLOG_INFO("Severity: low");
+			break;
+		}
+		case GL_DEBUG_SEVERITY_NOTIFICATION:
+		{
+			SPDLOG_INFO("Severity: notification");
+			break;
+		}
+		default:
+		{
+			SPDLOG_ERROR("NOT SUPPORTED");
+			break;
+		}
+	}
 }
 
 Void SRenderManager::shutdown()

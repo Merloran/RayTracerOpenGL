@@ -21,9 +21,10 @@ enum class ETextureType : Int8
 
 struct Texture 
 {
-	ETextureType type = ETextureType::None;
+	UInt8* data;
 	glm::ivec2 size;
 	Int32 channels;
-	UInt8* data;
 	UInt32 gpuId{0};
+	ETextureType type = ETextureType::None;
+	std::string name;
 };

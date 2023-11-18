@@ -17,6 +17,7 @@ Void camera_gui(Camera& camera)
 	ImGui::DragFloat("Speed", &camera.speed, 1.0f, 0.f, 100.0f);
 	ImGui::DragFloat("Near", &camera.near, 0.001f, 0.001f, 1.0f);
 	ImGui::DragFloat("Far", &camera.far, 1.0f, 1.0f, 5000.0f);
+	ImGui::Text("FPS: %.2f, %.2fms", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
 	ImGui::End();
 }
 
@@ -30,7 +31,7 @@ Int32 main()
 	displayManager.startup();
 	renderManager.startup();
 	resourceManager.startup();
-	resourceManager.load_gltf_asset("Resources/Assets/Bistro/Bistro.gltf");
+	// resourceManager.load_gltf_asset("Resources/Assets/Bistro/Bistro.gltf");
 	resourceManager.generate_opengl_resources();
 	Shader diffuse;
 	Camera camera;

@@ -27,12 +27,14 @@ public:
 
 	SResourceManager(SResourceManager&) = delete;
 
-	static SResourceManager& get();
+	static SResourceManager &get();
 	Void startup();
 
 	Void load_gltf_asset(const std::string& filePath);
 
 	Void generate_opengl_texture(Texture& texture);
+	Void generate_opengl_material(Material& material);
+	Void generate_opengl_mesh(Mesh& mesh);
 	Void generate_opengl_model(Model& model);
 	Void generate_opengl_resources();
 
@@ -54,13 +56,13 @@ public:
 	Texture  &get_texture_by_handle(const Handle<Texture> handle);
 
 	[[nodiscard]]
-	const Handle<Model>&	get_model_handle_by_name(const std::string& name)	 const;
+	const Handle<Model>		&get_model_handle_by_name(const std::string& name)	  const;
 	[[nodiscard]]
-	const Handle<Mesh>&		get_mesh_handle_by_name(const std::string& name)	 const;
+	const Handle<Mesh>		&get_mesh_handle_by_name(const std::string& name)	  const;
 	[[nodiscard]]
-	const Handle<Material>& get_material_handle_by_name(const std::string& name) const;
+	const Handle<Material>	&get_material_handle_by_name(const std::string& name) const;
 	[[nodiscard]]
-	const Handle<Texture>&  get_texture_handle_by_name(const std::string& name)  const;
+	const Handle<Texture>	&get_texture_handle_by_name(const std::string& name)  const;
 
 	[[nodiscard]]
 	const std::vector<Model>    &get_models()    const;
