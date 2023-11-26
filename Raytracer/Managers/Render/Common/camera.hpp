@@ -7,9 +7,9 @@ class Camera
 public:
 	glm::vec3 position{ 0.0f };
 	Float32   yaw{ 0.0f }, pitch{ 0.0f };
-	Float32   speed{ 400.0f };
-	Float32   sensitivity{ 50.0f };
-	Float32   near{ 0.1f }, far{ 8000.0f }, fov{ 70.0f };
+	Float32   speed{ 10.0f };
+	Float32   sensitivity{ 10.0f };
+	Float32   near{ 0.1f }, far{ 300.0f }, fov{ 70.0f };
 
 	Float32   lastX, lastY;
 	Bool	  isInactive = true;
@@ -24,6 +24,13 @@ public:
 	const glm::mat4& get_view() const;
 	[[nodiscard]]
 	const glm::mat4& get_projection(const Float32 aspectRatio) const;
+
+	[[nodiscard]]
+	const glm::vec3& get_forward() const;
+	[[nodiscard]]
+	const glm::vec3& get_right() const;
+	[[nodiscard]]
+	const glm::vec3& get_up() const;
 
 	Void get_input(Float32 deltaTime);
 

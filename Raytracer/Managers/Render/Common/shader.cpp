@@ -114,6 +114,7 @@ Void Shader::create(const std::string& computePath)
     catch (std::ifstream::failure& e)
     {
         SPDLOG_ERROR("ERROR::COMPUTE::SHADER::FILE_NOT_SUCCESFULLY_READ: {}", e.what());
+        return;
     }
     const Char* cShaderCode = computeShaderCode.c_str();
     UInt32 compute;
@@ -179,6 +180,16 @@ Void Shader::set_vec2(const std::string& name, Float32 x, Float32 y)
 Void Shader::set_vec2(const std::string& name, const glm::vec2& vector)
 {
     glUniform2f(glGetUniformLocation(id, name.c_str()), vector.x, vector.y);
+}
+
+Void Shader::set_ivec2(const std::string& name, Int32 x, Int32 y)
+{
+    glUniform2i(glGetUniformLocation(id, name.c_str()), x, y);
+}
+
+Void Shader::set_ivec2(const std::string& name, const glm::ivec2& vector)
+{
+    glUniform2i(glGetUniformLocation(id, name.c_str()), vector.x, vector.y);
 }
 
 Void Shader::set_vec3(const std::string& name, Float32 x, Float32 y, Float32 z)

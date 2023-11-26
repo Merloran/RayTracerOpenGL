@@ -170,9 +170,13 @@ Void SResourceManager::generate_opengl_resources()
 	{
 		generate_opengl_mesh(mesh);
 	}
+	textureGpuHandles.reserve(textures.size());
 	for (Texture& texture : textures)
 	{
 		generate_opengl_texture(texture);
+		UInt64 handle = glGetTextureHandleARB(texture.gpuId);
+		glMakeTextureHandleResidentARB(handle);
+		textureGpuHandles.emplace_back(handle);
 	}
 }
 
@@ -604,10 +608,12 @@ Void SResourceManager::shutdown()
 {
 	SPDLOG_INFO("Resource Manager shutdown.");
 	nameToIdTextures.clear();
-	for (Texture& texture : textures)
+	for (Int32 i = 0; i < textures.size(); ++i)
 	{
+		Texture& texture = textures[i];
 		if (texture.gpuId)
 		{
+			glMakeTextureHandleNonResidentARB(textureGpuHandles[i]);
 			glDeleteTextures(1, &texture.gpuId);
 			texture.gpuId = 0;
 		}
@@ -615,6 +621,7 @@ Void SResourceManager::shutdown()
 		texture.type = ETextureType::None;
 	}
 	textures.clear();
+	textureGpuHandles.clear();
 
 	nameToIdMaterials.clear();
 	materials.clear();

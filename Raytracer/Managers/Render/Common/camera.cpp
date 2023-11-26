@@ -6,7 +6,7 @@
 Void Camera::initialize(const glm::vec3& position)
 {
 	this->position = position;
-	yaw = -45.0f;
+	yaw = -90.0f;
 	pitch = 0.0f;
 
 	update_camera_vectors();
@@ -56,6 +56,21 @@ const glm::mat4& Camera::get_view() const
 const glm::mat4& Camera::get_projection(const Float32 aspectRatio) const
 {
 	return glm::perspective(glm::radians(fov), aspectRatio, near, far);
+}
+
+const glm::vec3& Camera::get_forward() const
+{
+	return forward;
+}
+
+const glm::vec3& Camera::get_right() const
+{
+	return right;
+}
+
+const glm::vec3& Camera::get_up() const
+{
+	return up;
 }
 
 Void Camera::get_input(Float32 deltaTime)

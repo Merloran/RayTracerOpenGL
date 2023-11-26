@@ -1,0 +1,125 @@
+#version 460 core
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+#extension GL_ARB_gpu_shader_uint64 : enable
+
+#define EPSILON 0.0000001f
+
+struct Ray
+{
+	vec3 origin;
+	vec3 direction;
+};
+
+struct HitInfo
+{
+	vec3 point;
+	vec3 normal;
+	vec2 uv;
+	float length;
+	bool frontFace;
+};
+
+layout(std430, binding = 0) buffer Positions
+{
+    vec4 positions[];
+};
+
+layout(std430, binding = 1) buffer Indexes
+{
+    uint indexes[];
+};
+
+layout(std430, binding = 2) buffer Uvs
+{
+    uint uvs[];
+};
+
+layout (rgba32f, binding = 0) writeonly uniform image2D imageOutput;
+
+uniform vec3 cameraPosition;
+uniform vec3 originPixel;
+uniform vec3 pixelDeltaU;
+uniform vec3 pixelDeltaV;
+uniform vec2 viewBounds;
+uniform ivec2 imageSize;
+
+
+bool triangle_intersect(int triangleId, in Ray ray, out vec3 point);
+void get_triangle(int triangleId, out vec3 a, out vec3 b, out vec3 c);
+
+void main()
+{
+    ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
+    if (gid.x >= imageSize.x || gid.y >= imageSize.y)
+	{
+        return;
+    }
+	
+	Ray ray;
+	ray.origin = cameraPosition;
+	vec3 pixelPosition = originPixel + float(gid.x) * pixelDeltaU + float(gid.y) * pixelDeltaV;
+	ray.direction = normalize(pixelPosition - ray.origin);
+	
+    vec4 pixelColor = vec4(1.0f);
+	vec3 point;
+	if (triangle_intersect(0, ray, point))
+	{
+		pixelColor = vec4(point, 1.0);
+	}
+	
+    imageStore(imageOutput, gid, pixelColor);
+}
+
+void get_triangle(int triangleId, out vec3 a, out vec3 b, out vec3 c)
+{
+	a = positions[indexes[triangleId + 0]].xyz;
+	b = positions[indexes[triangleId + 1]].xyz;
+	c = positions[indexes[triangleId + 2]].xyz;
+}
+
+bool triangle_intersect(int triangleId, in Ray ray, out vec3 point)
+{
+	vec3 a, b, c;
+	get_triangle(triangleId, a, b, c);
+    vec3 edge1, edge2, dirXe2;
+    float det;
+	
+    edge1 = b - a;
+    edge2 = c - a;
+	dirXe2 = cross(ray.direction, edge2);
+	det = dot(edge1, dirXe2);
+	
+	if (det > -EPSILON && det < EPSILON)
+    {
+		return false;    // This ray is parallel to this triangle.
+	}
+	
+    float invDet = 1.0f / det;
+    vec3 s = ray.origin - a;
+    float u = invDet * dot(s, dirXe2);
+
+    if (u < 0.0f || u > 1.0f)
+	{
+		return false;
+	}
+	
+    vec3 sXe1 = cross(s, edge1);
+    float v = invDet * dot(ray.direction, sXe1);
+
+    if (v < 0.0 || u + v > 1.0)
+	{
+		return false;
+	}
+	
+    // At this stage we can compute t to find out where the intersection point is on the line.
+    float t = invDet * dot(edge2, sXe1);
+
+    if (t < viewBounds.x || t > viewBounds.y)
+    {
+		// This means that there is a line intersection but not a ray intersection.
+		return false;
+    }
+	
+	point = ray.origin + ray.direction * t;
+	return true;
+}

@@ -115,5 +115,6 @@ private:
 
 	std::unordered_map<std::string, Handle<Texture>> nameToIdTextures;
 	std::vector<Texture> textures;
+	std::vector<UInt64> textureGpuHandles;
 };
 

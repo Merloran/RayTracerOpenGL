@@ -20,17 +20,19 @@ public:
     Void use();
 
     // Setters for uniforms
-    Void set_bool (const std::string& name, Bool value);
-    Void set_int  (const std::string& name, Int32 value);
-    Void set_float(const std::string& name, Float32 value);
-    Void set_vec2 (const std::string& name, Float32 x, Float32 y);
-    Void set_vec2 (const std::string& name, const glm::vec2& vector);
-    Void set_vec3 (const std::string& name, Float32 x, Float32 y, Float32 z);
-    Void set_vec3 (const std::string& name, const glm::vec3& vector);
-    Void set_vec4 (const std::string& name, Float32 x, Float32 y, Float32 z, Float32 w);
-    Void set_vec4 (const std::string& name, const glm::vec4& vector);
-    Void set_mat4 (const std::string& name, const glm::mat4& value);
-    Void set_block(const std::string& name, UInt32 number);
+    Void set_bool  (const std::string& name, Bool value);
+    Void set_int   (const std::string& name, Int32 value);
+    Void set_float (const std::string& name, Float32 value);
+    Void set_vec2  (const std::string& name, Float32 x, Float32 y);
+    Void set_vec2  (const std::string& name, const glm::vec2 &vector);
+    Void set_ivec2 (const std::string& name, Int32 x, Int32 y);
+    Void set_ivec2 (const std::string& name, const glm::ivec2 &vector);
+    Void set_vec3  (const std::string& name, Float32 x, Float32 y, Float32 z);
+    Void set_vec3  (const std::string& name, const glm::vec3 &vector);
+    Void set_vec4  (const std::string& name, Float32 x, Float32 y, Float32 z, Float32 w);
+    Void set_vec4  (const std::string& name, const glm::vec4 &vector);
+    Void set_mat4  (const std::string& name, const glm::mat4 &value);
+    Void set_block (const std::string& name, UInt32 number);
 
     static Void s_bind_uniform_buffer(UInt32 uniformBufferObject, UInt32 offset, UInt32 size, Float32* data);
     Void shutdown();

@@ -10,6 +10,7 @@ public:
 
 	Void startup();
 	Void draw_model(const Model& model, Shader &shader);
+	Void draw_quad();
 
 	static Void gl_debug(UInt32 source,
 	                     UInt32 type,
