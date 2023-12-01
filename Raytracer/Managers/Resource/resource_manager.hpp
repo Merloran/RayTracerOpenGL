@@ -36,6 +36,8 @@ public:
 	Void generate_opengl_material(Material& material);
 	Void generate_opengl_mesh(Mesh& mesh);
 	Void generate_opengl_model(Model& model);
+	Void generate_opengl_textures();
+	Void generate_opengl_meshes();
 	Void generate_opengl_resources();
 
 	Handle<Model>    load_model(const std::filesystem::path & filePath, tinygltf::Node& gltfNode, tinygltf::Model& gltfModel);
@@ -115,6 +117,5 @@ private:
 
 	std::unordered_map<std::string, Handle<Texture>> nameToIdTextures;
 	std::vector<Texture> textures;
-	std::vector<UInt64> textureGpuHandles;
 };
 

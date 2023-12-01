@@ -18,6 +18,7 @@ Void camera_gui(Camera& camera)
 	ImGui::DragFloat3("Position", &camera.position[0], 0.1f, -10.0f, 10.0f);
 	ImGui::DragFloat("Sensitivity", &camera.sensitivity, 0.2f, 0.f, 100.0f);
 	ImGui::DragFloat("Speed", &camera.speed, 1.0f, 0.f, 100.0f);
+	ImGui::DragFloat("Fov", &camera.fov, 1.0f, 0.1f, 360.0f);
 	ImGui::DragFloat("Near", &camera.near, 0.001f, 0.001f, 1.0f);
 	ImGui::DragFloat("Far", &camera.far, 1.0f, 1.0f, 5000.0f);
 	ImGui::Text("FPS: %.2f, %.2fms", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
@@ -35,9 +36,12 @@ Int32 main()
 	displayManager.startup();
 	renderManager.startup();
 	resourceManager.startup();
+
+	resourceManager.generate_opengl_textures();
+
 	raytraceManager.startup();
-	// resourceManager.load_gltf_asset("Resources/Assets/Bistro/Bistro.gltf");
-	resourceManager.generate_opengl_resources();
+	// resourceManager.load_gltf_asset("Resources/Assets/Main.1_Sponza/NewSponza_Main_glTF_002.gltf");
+	// resourceManager.generate_opengl_resources();
 	Shader diffuse;
 	Camera camera;
 	diffuse.create("Resources/Shaders/Vertex.vert", "Resources/Shaders/Fragment.frag");
@@ -67,9 +71,7 @@ Int32 main()
 		displayManager.make_context_current();
 
 		raytraceManager.update(camera);
-		// SPDLOG_INFO("forward {}", glm::to_string(camera.get_forward()));
-		// SPDLOG_INFO("right {}", glm::to_string(camera.get_right()));
-		// SPDLOG_INFO("position {}", glm::to_string(camera.position));
+
 		// diffuse.use();
 		// glm::mat4 view = camera.get_view();
 		// glm::mat4 proj = camera.get_projection(displayManager.get_aspect_ratio());

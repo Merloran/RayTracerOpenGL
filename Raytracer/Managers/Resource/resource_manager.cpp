@@ -24,7 +24,7 @@ Void SResourceManager::startup()
 	defaultMaterial.roughness		 = load_texture(TEXTURES_PATH + "Default/Roughness.png", "DefaultRoughness", ETextureType::Roughness);
 	defaultMaterial.metalness		 = load_texture(TEXTURES_PATH + "Default/Metalness.png", "DefaultMetalness", ETextureType::Metalness);
 	defaultMaterial.ambientOcclusion = load_texture(TEXTURES_PATH + "Default/AmbientOcclusion.png", "DefaultAmbientOcclusion", ETextureType::AmbientOcclusion);
-	Handle<Material> handle = create_material(defaultMaterial, defaultMaterial.name);
+	create_material(defaultMaterial, defaultMaterial.name);
 	load_gltf_asset(ASSETS_PATH + "Default/Default.gltf");
 }
 
@@ -103,6 +103,13 @@ Void SResourceManager::generate_opengl_texture(Texture& texture)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	texture.bindlessId = glGetTextureHandleARB(texture.gpuId);
+	if (texture.bindlessId == 0)
+	{
+		SPDLOG_ERROR("Texture gpu handle failed to generate {}", texture.name);
+		return;
+	}
+	glMakeTextureHandleResidentARB(texture.bindlessId);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
@@ -164,20 +171,26 @@ Void SResourceManager::generate_opengl_model(Model& model)
 	}
 }
 
-Void SResourceManager::generate_opengl_resources()
+Void SResourceManager::generate_opengl_textures()
+{
+	for (Texture& texture : textures)
+	{
+		generate_opengl_texture(texture);
+	}
+}
+
+Void SResourceManager::generate_opengl_meshes()
 {
 	for (Mesh& mesh : meshes)
 	{
 		generate_opengl_mesh(mesh);
 	}
-	textureGpuHandles.reserve(textures.size());
-	for (Texture& texture : textures)
-	{
-		generate_opengl_texture(texture);
-		UInt64 handle = glGetTextureHandleARB(texture.gpuId);
-		glMakeTextureHandleResidentARB(handle);
-		textureGpuHandles.emplace_back(handle);
-	}
+}
+
+Void SResourceManager::generate_opengl_resources()
+{
+	generate_opengl_textures();
+	generate_opengl_meshes();
 }
 
 Handle<Model> SResourceManager::load_model(const std::filesystem::path &filePath, tinygltf::Node &gltfNode, tinygltf::Model &gltfModel)
@@ -611,9 +624,13 @@ Void SResourceManager::shutdown()
 	for (Int32 i = 0; i < textures.size(); ++i)
 	{
 		Texture& texture = textures[i];
+		if (texture.bindlessId)
+		{
+			glMakeTextureHandleNonResidentARB(texture.bindlessId);
+			texture.bindlessId = 0;
+		}
 		if (texture.gpuId)
 		{
-			glMakeTextureHandleNonResidentARB(textureGpuHandles[i]);
 			glDeleteTextures(1, &texture.gpuId);
 			texture.gpuId = 0;
 		}
@@ -621,7 +638,6 @@ Void SResourceManager::shutdown()
 		texture.type = ETextureType::None;
 	}
 	textures.clear();
-	textureGpuHandles.clear();
 
 	nameToIdMaterials.clear();
 	materials.clear();

@@ -1,6 +1,6 @@
 #version 460 core
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
-#extension GL_ARB_gpu_shader_uint64 : enable
+#extension GL_ARB_bindless_texture : enable
 
 #define EPSILON 0.0000001f
 
@@ -15,23 +15,56 @@ struct HitInfo
 	vec3 point;
 	vec3 normal;
 	vec2 uv;
-	float length;
+	float distance;
 	bool frontFace;
+	int materialId;
 };
 
-layout(std430, binding = 0) buffer Positions
+struct Triangle
 {
-    vec4 positions[];
+	vec3 points[3];
+	vec3 normals[3];
+	vec2 uvs[3];
+	int materialId;
 };
 
-layout(std430, binding = 1) buffer Indexes
+struct Material
+{
+	int albedo;
+	int normal;
+	int roughness;
+	int metalness;
+	int emission;
+};
+
+layout(std430, binding = 0) readonly buffer Positions
+{
+    vec4 positionsWithMaterial[];
+};
+
+layout(std430, binding = 1) readonly buffer Normals
+{
+    vec4 normals[];
+};
+
+layout(std430, binding = 2) readonly buffer Uvs
+{
+    vec2 uvs[];
+};
+
+layout(std430, binding = 3) readonly buffer Indexes
 {
     uint indexes[];
 };
 
-layout(std430, binding = 2) buffer Uvs
+layout(std430, binding = 4) readonly buffer Textures
 {
-    uint uvs[];
+	sampler2D textures[];
+};
+
+layout(std430, binding = 5) readonly buffer Materials
+{
+    Material materials[];
 };
 
 layout (rgba32f, binding = 0) writeonly uniform image2D imageOutput;
@@ -42,10 +75,11 @@ uniform vec3 pixelDeltaU;
 uniform vec3 pixelDeltaV;
 uniform vec2 viewBounds;
 uniform ivec2 imageSize;
+uniform int trianglesCount;
 
 
-bool triangle_intersect(int triangleId, in Ray ray, out vec3 point);
-void get_triangle(int triangleId, out vec3 a, out vec3 b, out vec3 c);
+bool triangle_intersect(int triangleId, in Ray ray, out HitInfo info);
+void get_triangle(int triangleId, out Triangle triangle);
 
 void main()
 {
@@ -61,31 +95,50 @@ void main()
 	ray.direction = normalize(pixelPosition - ray.origin);
 	
     vec4 pixelColor = vec4(1.0f);
-	vec3 point;
-	if (triangle_intersect(0, ray, point))
+	HitInfo info, currentInfo;
+	info.distance = viewBounds.y + 1.0f;
+	for (int i = 0; i < trianglesCount; ++i)
 	{
-		pixelColor = vec4(point, 1.0);
+		if (triangle_intersect(i * 3, ray, currentInfo) && currentInfo.distance < info.distance)
+		{
+			info = currentInfo;
+			pixelColor = texture(textures[info.materialId], info.uv);
+		}
 	}
 	
     imageStore(imageOutput, gid, pixelColor);
 }
 
-void get_triangle(int triangleId, out vec3 a, out vec3 b, out vec3 c)
+void get_triangle(int triangleId, out Triangle triangle)
 {
-	a = positions[indexes[triangleId + 0]].xyz;
-	b = positions[indexes[triangleId + 1]].xyz;
-	c = positions[indexes[triangleId + 2]].xyz;
+	uint indices[3] = 
+	{
+		indexes[triangleId + 0],
+		indexes[triangleId + 1],
+		indexes[triangleId + 2]
+	};
+	
+	triangle.points[0] = positionsWithMaterial[indices[0]].xyz;
+	triangle.points[1] = positionsWithMaterial[indices[1]].xyz;
+	triangle.points[2] = positionsWithMaterial[indices[2]].xyz;
+	triangle.normals[0] = normals[indices[0]].xyz;
+	triangle.normals[1] = normals[indices[1]].xyz;
+	triangle.normals[2] = normals[indices[2]].xyz;
+	triangle.uvs[0] = uvs[indices[0]];
+	triangle.uvs[1] = uvs[indices[1]];
+	triangle.uvs[2] = uvs[indices[2]];
+	triangle.materialId = floatBitsToInt(positionsWithMaterial[indices[0]].w);
 }
 
-bool triangle_intersect(int triangleId, in Ray ray, out vec3 point)
+bool triangle_intersect(int triangleId, in Ray ray, out HitInfo info)
 {
-	vec3 a, b, c;
-	get_triangle(triangleId, a, b, c);
+	Triangle triangle;
+	get_triangle(triangleId, triangle);
     vec3 edge1, edge2, dirXe2;
     float det;
 	
-    edge1 = b - a;
-    edge2 = c - a;
+    edge1 = triangle.points[1] - triangle.points[0];
+    edge2 = triangle.points[2] - triangle.points[0];
 	dirXe2 = cross(ray.direction, edge2);
 	det = dot(edge1, dirXe2);
 	
@@ -95,7 +148,7 @@ bool triangle_intersect(int triangleId, in Ray ray, out vec3 point)
 	}
 	
     float invDet = 1.0f / det;
-    vec3 s = ray.origin - a;
+    vec3 s = ray.origin - triangle.points[0];
     float u = invDet * dot(s, dirXe2);
 
     if (u < 0.0f || u > 1.0f)
@@ -106,20 +159,32 @@ bool triangle_intersect(int triangleId, in Ray ray, out vec3 point)
     vec3 sXe1 = cross(s, edge1);
     float v = invDet * dot(ray.direction, sXe1);
 
-    if (v < 0.0 || u + v > 1.0)
+    if (v < 0.0f || u + v > 1.0f)
 	{
 		return false;
 	}
 	
-    // At this stage we can compute t to find out where the intersection point is on the line.
-    float t = invDet * dot(edge2, sXe1);
+    // At this stage we can compute distance to find out where the intersection point is on the line.
+    info.distance = invDet * dot(edge2, sXe1);
 
-    if (t < viewBounds.x || t > viewBounds.y)
+    if (info.distance < viewBounds.x || info.distance > viewBounds.y)
     {
 		// This means that there is a line intersection but not a ray intersection.
 		return false;
     }
 	
-	point = ray.origin + ray.direction * t;
+	info.point = ray.origin + ray.direction * info.distance;
+	float w = 1.0f - u - v;
+	info.normal = triangle.normals[0] * w 
+				+ triangle.normals[1] * u 
+				+ triangle.normals[2] * v;
+	info.normal = normalize(info.normal);
+	
+	info.uv = triangle.uvs[0] * w 
+			+ triangle.uvs[1] * u 
+			+ triangle.uvs[2] * v;
+			
+	info.materialId = triangle.materialId;
+				
 	return true;
 }

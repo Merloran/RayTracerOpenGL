@@ -25,6 +25,7 @@ struct Texture
 	glm::ivec2 size;
 	Int32 channels;
 	UInt32 gpuId{0};
+	UInt64 bindlessId{0};
 	ETextureType type = ETextureType::None;
 	std::string name;
 };

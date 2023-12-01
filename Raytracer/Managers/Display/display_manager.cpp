@@ -103,6 +103,10 @@ Bool SDisplayManager::should_window_close()
 
 GLFWwindow& SDisplayManager::get_window()
 {
+	if (window == nullptr)
+	{
+		SPDLOG_ERROR("Window is not initialized!");
+	}
 	return *window;
 }
 
