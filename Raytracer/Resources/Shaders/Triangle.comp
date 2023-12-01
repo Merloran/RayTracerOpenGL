@@ -67,12 +67,10 @@ layout(std430, binding = 5) readonly buffer Materials
     Material materials[];
 };
 
-layout (rgba32f, binding = 0) writeonly uniform image2D imageOutput;
+layout (rgba32f, binding = 0) readonly uniform image2D rayDirections;
+layout (rgba32f, binding = 1) uniform image2D accumulated;
 
 uniform vec3 cameraPosition;
-uniform vec3 originPixel;
-uniform vec3 pixelDeltaU;
-uniform vec3 pixelDeltaV;
 uniform vec2 viewBounds;
 uniform ivec2 imageSize;
 uniform int trianglesCount;
@@ -91,10 +89,9 @@ void main()
 	
 	Ray ray;
 	ray.origin = cameraPosition;
-	vec3 pixelPosition = originPixel + float(gid.x) * pixelDeltaU + float(gid.y) * pixelDeltaV;
-	ray.direction = normalize(pixelPosition - ray.origin);
+	ray.direction = imageLoad(rayDirections, gid).xyz;
 	
-    vec4 pixelColor = vec4(1.0f);
+    vec3 pixelColor = vec3(1.0f);
 	HitInfo info, currentInfo;
 	info.distance = viewBounds.y + 1.0f;
 	for (int i = 0; i < trianglesCount; ++i)
@@ -102,11 +99,13 @@ void main()
 		if (triangle_intersect(i * 3, ray, currentInfo) && currentInfo.distance < info.distance)
 		{
 			info = currentInfo;
-			pixelColor = texture(textures[info.materialId], info.uv);
+			pixelColor = texture(textures[info.materialId], info.uv).rgb;
 		}
 	}
 	
-    imageStore(imageOutput, gid, pixelColor);
+    vec3 currentPixel = imageLoad(accumulated, gid).rgb;
+	vec4 result = vec4(currentPixel + pixelColor, 1.0f);
+    imageStore(accumulated, gid, result);
 }
 
 void get_triangle(int triangleId, out Triangle triangle)

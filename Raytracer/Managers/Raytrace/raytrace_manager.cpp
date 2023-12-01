@@ -22,10 +22,13 @@ Void SRaytraceManager::startup()
 {
 	SPDLOG_INFO("Raytrace Manager startup.");
 	SResourceManager& resourceManager = SResourceManager::get();
+	rayGeneration.create("Resources/Shaders/RayGeneration.comp");
 	triangle.create("Resources/Shaders/Triangle.comp");
 	screen.create("Resources/Shaders/Screen.vert", "Resources/Shaders/Screen.frag");
 	screen.use();
-	screen.set_int("image", 0);
+	screen.set_int("accumulated", 0);
+
+	frameCount = 1;
 
 	textures.reserve(resourceManager.get_textures().size());
 	for (const Texture& texture : resourceManager.get_textures())
@@ -168,43 +171,61 @@ Void SRaytraceManager::update(Camera &camera)
 	SRenderManager &renderManager = SRenderManager::get();
 
 	const glm::ivec2& size = displayManager.get_window_size();
-	if (imageSize != size)
+	const glm::ivec2 workGroupsCount = size / 16;
+	const Bool hasWindowResized = imageSize != size;
+	const Bool hasCameraChanged = camera.has_changed();
+
+	if (hasWindowResized)
 	{
 		imageSize = size;
-		resize_opengl_texture(screenTextures[0], imageSize);
-		resize_opengl_texture(screenTextures[1], imageSize);
-		glBindImageTexture(0, screenTextures[0], 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		resize_opengl_texture(screenTexture, imageSize);
+		resize_opengl_texture(directionTexture, imageSize);
+		glBindImageTexture(0, directionTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		glBindImageTexture(1, screenTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 	}
-	
-	const Float32 theta = glm::radians(camera.fov);
-	const Float32 h = glm::tan(theta * 0.5f);
-	glm::vec2 viewportSize;
-	viewportSize.y = 2.0f * h;
-	viewportSize.x = viewportSize.y * displayManager.get_aspect_ratio();
 
-	const glm::vec3 viewportU = Float32(viewportSize.x) * camera.get_right();
-	const glm::vec3 viewportV = Float32(viewportSize.y) * camera.get_up();
+	if (hasWindowResized || hasCameraChanged)
+	{
+		camera.set_camera_changed(false);
+		frameCount = 1;
+		const Float32 theta = glm::radians(camera.get_fov());
+		const Float32 h = glm::tan(theta * 0.5f);
+		glm::vec2 viewportSize;
+		viewportSize.y = 2.0f * h;
+		viewportSize.x = viewportSize.y * displayManager.get_aspect_ratio();
 
-	pixelDeltaU = viewportU / Float32(size.x);
-	pixelDeltaV = viewportV / Float32(size.y);
-	originPixel = camera.position + camera.get_forward() + (pixelDeltaU - viewportU + pixelDeltaV - viewportV) * 0.5f;
+		const glm::vec3 viewportU = Float32(viewportSize.x) * camera.get_right();
+		const glm::vec3 viewportV = Float32(viewportSize.y) * camera.get_up();
+
+		pixelDeltaU = viewportU / Float32(size.x);
+		pixelDeltaV = viewportV / Float32(size.y);
+		originPixel = camera.get_position() + camera.get_forward() + (pixelDeltaU - viewportU + pixelDeltaV - viewportV) * 0.5f;
+		
+		rayGeneration.use();
+		rayGeneration.set_vec3("cameraPosition", camera.get_position());
+		rayGeneration.set_vec3("originPixel", originPixel);
+		rayGeneration.set_vec3("pixelDeltaU", pixelDeltaU);
+		rayGeneration.set_vec3("pixelDeltaV", pixelDeltaV);
+		rayGeneration.set_ivec2("imageSize", size);
+		glDispatchCompute(workGroupsCount.x, workGroupsCount.y, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	}
 
 	triangle.use();
-	triangle.set_vec3("cameraPosition", camera.position);
-	triangle.set_vec3("originPixel", originPixel);
-	triangle.set_vec3("pixelDeltaU", pixelDeltaU);
-	triangle.set_vec3("pixelDeltaV", pixelDeltaV);
+	triangle.set_vec3("cameraPosition", camera.get_position());
 	triangle.set_ivec2("imageSize", size);
-	triangle.set_vec2("viewBounds", camera.near, camera.far);
+	triangle.set_vec2("viewBounds", camera.get_view_bounds());
 	triangle.set_int("trianglesCount", Int32(indexes.size() / 3));
 	
-	glDispatchCompute(Int32(size.x / 16), Int32(size.y / 16), 1);
-	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+	glDispatchCompute(workGroupsCount.x, workGroupsCount.y, 1);
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 	screen.use();
+	screen.set_float("invFrameCount", Float32(1.0f / frameCount));
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, screenTextures[0]);
+	glBindTexture(GL_TEXTURE_2D, screenTexture);
 	renderManager.draw_quad();
+	frameCount++;
 }
 
 Void SRaytraceManager::resize_opengl_texture(UInt32& texture, const glm::ivec2& size)
@@ -225,8 +246,13 @@ Void SRaytraceManager::resize_opengl_texture(UInt32& texture, const glm::ivec2& 
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+Int32 SRaytraceManager::get_frame_count() const
+{
+	return frameCount;
+}
+
 Void SRaytraceManager::shutdown()
 {
 	glDeleteBuffers(6, ssbo);
-	glDeleteTextures(2, screenTextures);
+	glDeleteTextures(1, &screenTexture);
 }

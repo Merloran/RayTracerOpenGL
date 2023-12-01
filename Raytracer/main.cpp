@@ -14,14 +14,39 @@
 
 Void camera_gui(Camera& camera)
 {
-	ImGui::Begin("Camera settings");
-	ImGui::DragFloat3("Position", &camera.position[0], 0.1f, -10.0f, 10.0f);
-	ImGui::DragFloat("Sensitivity", &camera.sensitivity, 0.2f, 0.f, 100.0f);
-	ImGui::DragFloat("Speed", &camera.speed, 1.0f, 0.f, 100.0f);
-	ImGui::DragFloat("Fov", &camera.fov, 1.0f, 0.1f, 360.0f);
-	ImGui::DragFloat("Near", &camera.near, 0.001f, 0.001f, 1.0f);
-	ImGui::DragFloat("Far", &camera.far, 1.0f, 1.0f, 5000.0f);
-	ImGui::Text("FPS: %.2f, %.2fms", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
+	if (ImGui::Begin("Camera settings"))
+	{
+		glm::vec3 position = camera.get_position();
+		glm::vec2 viewBounds = camera.get_view_bounds();
+		Float32 sensitivity = camera.get_sensitivity();
+		Float32 speed = camera.get_speed();
+		Float32 fov = camera.get_fov();
+
+		ImGui::DragFloat3("Position", &position[0], 0.1f, -10.0f, 10.0f);
+		ImGui::DragFloat("Sensitivity", &sensitivity, 0.2f, 0.f, 100.0f);
+		ImGui::DragFloat("Speed", &speed, 1.0f, 0.f, 100.0f);
+		ImGui::DragFloat("Fov", &fov, 1.0f, 0.1f, 360.0f);
+		ImGui::DragFloat("Near", &viewBounds.x, 0.001f, 0.001f, 1.0f);
+		ImGui::DragFloat("Far", &viewBounds.y, 1.0f, 1.0f, 5000.0f);
+
+		camera.set_position(position);
+		camera.set_view_bounds(viewBounds);
+		camera.set_sensitivity(sensitivity);
+		camera.set_speed(speed);
+		camera.set_fov(fov);
+	}
+	ImGui::End();
+	
+}
+
+Void info_gui()
+{
+	if (ImGui::Begin("Render info"))
+	{
+		SRaytraceManager& raytraceManager = SRaytraceManager::get();
+		ImGui::Text("FPS: %.2f, %.2fms", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
+		ImGui::Text("Accumulated frames: %d", raytraceManager.get_frame_count());
+	}
 	ImGui::End();
 }
 
@@ -45,7 +70,7 @@ Int32 main()
 	Shader diffuse;
 	Camera camera;
 	diffuse.create("Resources/Shaders/Vertex.vert", "Resources/Shaders/Fragment.frag");
-	camera.initialize(glm::vec3(0.0f, 0.0f, 1.0f));
+	camera.initialize(glm::vec3(0.0f, 0.0f, 5.0f));
 
 	Float32 lastFrame = 0.0f;
 	while (!displayManager.should_window_close())
@@ -55,7 +80,7 @@ Int32 main()
 		lastFrame = currentFrame;
 
 		displayManager.poll_events();
-		camera.get_input(deltaTimeMs);
+		camera.catch_input(deltaTimeMs);
 
 		glClearColor(0.31f, 0.22f, 0.16f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -65,6 +90,7 @@ Int32 main()
 		ImGui::NewFrame();
 
 		camera_gui(camera);
+		info_gui();
 
 		ImGui::Render();
 

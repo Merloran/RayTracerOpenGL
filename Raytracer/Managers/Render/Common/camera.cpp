@@ -5,9 +5,18 @@
 
 Void Camera::initialize(const glm::vec3& position)
 {
-	this->position = position;
-	yaw = -90.0f;
-	pitch = 0.0f;
+	this->position  = position;
+	forward			= {  0.0f,  0.0f, -1.0f };
+	up				= {  0.0f,  1.0f,  0.0f };
+	right			= {  1.0f,  0.0f,  0.0f };
+	viewBounds		= {  0.001f,  300.0f };
+	yaw				= -90.0f;
+	pitch			= 0.0f;
+	speed			= 10.0f;
+	sensitivity		= 10.0f;
+	fov				= 70.0f;
+	isInactive		= true;
+	hasChanged		= true;
 
 	update_camera_vectors();
 }
@@ -15,16 +24,19 @@ Void Camera::initialize(const glm::vec3& position)
 Void Camera::move_forward(Float32 dt)
 {
 	position += forward * dt * speed;
+	hasChanged = true;
 }
 
 Void Camera::move_right(Float32 dt)
 {
 	position += right * dt * speed;
+	hasChanged = true;
 }
 
 Void Camera::move_up(Float32 dt)
 {
 	position += glm::vec3(0.0f, 1.0f, 0.0f) * dt * speed;
+	hasChanged = true;
 }
 
 Void Camera::rotate(Float32 xOffset, Float32 yOffset)
@@ -53,9 +65,9 @@ const glm::mat4& Camera::get_view() const
 	return glm::lookAt(position, position + forward, up);
 }
 
-const glm::mat4& Camera::get_projection(const Float32 aspectRatio) const
+const glm::mat4& Camera::get_projection(Float32 aspectRatio) const
 {
-	return glm::perspective(glm::radians(fov), aspectRatio, near, far);
+	return glm::perspective(glm::radians(fov), aspectRatio, viewBounds.x, viewBounds.y);
 }
 
 const glm::vec3& Camera::get_forward() const
@@ -73,7 +85,72 @@ const glm::vec3& Camera::get_up() const
 	return up;
 }
 
-Void Camera::get_input(Float32 deltaTime)
+const glm::vec3& Camera::get_position() const
+{
+	return position;
+}
+
+const glm::vec2& Camera::get_view_bounds() const
+{
+	return viewBounds;
+}
+
+Float32 Camera::get_sensitivity() const
+{
+	return sensitivity;
+}
+
+Float32 Camera::get_speed() const
+{
+	return speed;
+}
+
+Float32 Camera::get_fov() const
+{
+	return fov;
+}
+
+Bool Camera::has_changed() const
+{
+	return hasChanged;
+}
+
+Void Camera::set_position(const glm::vec3& position)
+{
+	this->position = position;
+	hasChanged = true;
+}
+
+Void Camera::set_view_bounds(const glm::vec2& viewBounds)
+{
+	this->viewBounds = viewBounds;
+	hasChanged = true;
+}
+
+Void Camera::set_sensitivity(Float32 sensitivity)
+{
+	this->sensitivity = sensitivity;
+	hasChanged = true;
+}
+
+Void Camera::set_speed(Float32 speed)
+{
+	this->speed = speed;
+	hasChanged = true;
+}
+
+Void Camera::set_fov(Float32 fov)
+{
+	this->fov = fov;
+	hasChanged = true;
+}
+
+Void Camera::set_camera_changed(Bool hasChanged)
+{
+	this->hasChanged = hasChanged;
+}
+
+Void Camera::catch_input(Float32 deltaTime)
 {
 	SDisplayManager& displayManager = SDisplayManager::get();
 
@@ -93,21 +170,23 @@ Void Camera::get_input(Float32 deltaTime)
 		return;
 	}
 
-	Float64 x, y;
-	glfwGetCursorPos(&displayManager.get_window(), &x, &y);
+	glm::dvec2 mousePosition;
+	glfwGetCursorPos(&displayManager.get_window(), &mousePosition.x, &mousePosition.y);
 	if (isInactive)
 	{
-		lastX = x;
-		lastY = y;
+		lastPosition.x = mousePosition.x;
+		lastPosition.y = mousePosition.y;
 		isInactive = false;
 	}
 
-	const Float32 xOffset = x - lastX;
-	const Float32 yOffset = lastY - y;
-	lastX = x;
-	lastY = y;
+	glm::vec2 offset = glm::vec2(mousePosition) - lastPosition;
+	offset.y = -offset.y;
 
-	rotate(xOffset * deltaTime, yOffset * deltaTime);
+	lastPosition = mousePosition;
+	if (glm::length2(offset) > 0.0f)
+	{
+		rotate(offset.x * deltaTime, offset.y * deltaTime);
+	}
 	
 	// Camera Movement
 	if (glfwGetKey(&displayManager.get_window(), GLFW_KEY_W) == GLFW_PRESS)
@@ -146,4 +225,6 @@ Void Camera::update_camera_vectors()
 
 	right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
 	up = glm::normalize(glm::cross(right, forward));
+
+	hasChanged = true;
 }

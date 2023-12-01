@@ -23,13 +23,16 @@ public:
 	Void update(Camera& camera);
 	Void resize_opengl_texture(UInt32& texture, const glm::ivec2 &size);
 
+	[[nodiscard]]
+	Int32 get_frame_count() const;
+
 	Void shutdown();
 
 private:
 	SRaytraceManager() = default;
 	~SRaytraceManager() = default;
 
-	Shader triangle, screen;
+	Shader rayGeneration, triangle, screen;
 	std::vector<glm::vec4> positionsWithMaterial;
 	std::vector<glm::vec4> normals;
 	std::vector<glm::vec2> uvs;
@@ -38,8 +41,8 @@ private:
 	std::vector<GpuMaterial> materials;
 	glm::vec3 originPixel, pixelDeltaU, pixelDeltaV;
 	glm::ivec2 imageSize;
-	UInt32 ssbo[6]; //Positions, Normals, Uvs, Indexes, TextureHandles, Materials 
-	UInt32 screenTextures[2];
+	UInt32 ssbo[6]; //Positions, Normals, Uvs, Indexes, TextureHandles, Materials
+	UInt32 screenTexture, directionTexture;
 	Int32 frameCount;
 };
 
