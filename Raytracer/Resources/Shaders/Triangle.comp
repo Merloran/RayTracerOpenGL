@@ -1,8 +1,10 @@
 #version 460 core
-layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 #extension GL_ARB_bindless_texture : enable
-
 #define EPSILON 0.0000001f
+#define PI 3.1415926535897932384626433832795f
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
 
 struct Ray
 {
@@ -18,6 +20,7 @@ struct HitInfo
 	float distance;
 	bool frontFace;
 	int materialId;
+	int triangleId;
 };
 
 struct Triangle
@@ -26,6 +29,14 @@ struct Triangle
 	vec3 normals[3];
 	vec2 uvs[3];
 	int materialId;
+};
+
+struct BVHNode
+{
+	vec3 min;
+    int leftId;
+	vec3 max;
+    int rightId;
 };
 
 struct Material
@@ -67,17 +78,43 @@ layout(std430, binding = 5) readonly buffer Materials
     Material materials[];
 };
 
+layout(std430, binding = 6) readonly buffer Nodes
+{
+    BVHNode nodes[];
+};
+
 layout (rgba32f, binding = 0) readonly uniform image2D rayDirections;
 layout (rgba32f, binding = 1) uniform image2D accumulated;
 
-uniform vec3 cameraPosition;
-uniform vec2 viewBounds;
+uniform vec3  backgroundColor;
+uniform vec3  cameraPosition;
+uniform vec3  pixelDeltaU;
+uniform vec3  pixelDeltaV;
+uniform vec2  viewBounds;
 uniform ivec2 imageSize;
-uniform int trianglesCount;
+uniform float time;
+uniform int   maxBouncesCount;
+uniform int   trianglesCount;
+uniform int   rootId;
+
+float rand(vec2 coords);
+float rand(vec2 bounds, vec2 seed);
+vec3 rand_in_unit_sphere(vec2 seed);
+vec3 rand_in_unit_hemisphere(vec3 normal, vec2 seed);
+vec3 rand_in_unit_hemisphere(vec3 normal, vec2 seed, float roughness);
 
 
 bool triangle_intersect(int triangleId, in Ray ray, out HitInfo info);
+bool aabb_intersect(int nodeId, Ray ray);
 void get_triangle(int triangleId, out Triangle triangle);
+vec3 get_color_from_texture(int textureId, vec2 uv);
+bool hit(in Ray ray, out HitInfo info);
+vec3 calculate_surface_normal(int triangleId, vec3 faceNormal, vec3 textureNormal);
+vec3 fresnel_schlick(float cosTheta, vec3 F0);
+float ggx_distribution(float roughness, float NdotH);
+float geometry_schlick_ggx(float NdotV, float roughness);
+float geometry_smith(float NdotV, float NdotL, float roughness);
+vec3 calculate_reflection(vec2 seed, Ray ray, vec3 normal, vec3 albedo, float metalness, float roughness);
 
 void main()
 {
@@ -86,26 +123,100 @@ void main()
 	{
         return;
     }
+	vec2 seed = vec2(gid) + vec2(time);
+    vec3 attenuation = vec3(1.0f);
+    vec3 color = vec3(0.0f);
 	
 	Ray ray;
 	ray.origin = cameraPosition;
-	ray.direction = imageLoad(rayDirections, gid).xyz;
 	
-    vec3 pixelColor = vec3(1.0f);
-	HitInfo info, currentInfo;
-	info.distance = viewBounds.y + 1.0f;
-	for (int i = 0; i < trianglesCount; ++i)
+	vec2 offset = vec2(rand(seed), rand(-seed)) - 0.5f;
+	vec3 randomOffset = (offset.x * pixelDeltaU) + (offset.y * pixelDeltaV);
+	ray.direction = normalize(imageLoad(rayDirections, gid).xyz + randomOffset);
+	
+	
+	for (int bounce = 0; bounce < maxBouncesCount; ++bounce) 
 	{
-		if (triangle_intersect(i * 3, ray, currentInfo) && currentInfo.distance < info.distance)
+        HitInfo info;
+        bool hitSomething = false;
+
+        // Check for intersection with the scene
+		hitSomething = hit(ray, info);
+
+        if (hitSomething) 
 		{
-			info = currentInfo;
-			pixelColor = texture(textures[info.materialId], info.uv).rgb;
-		}
-	}
+			Material material  = materials[info.materialId];
+            vec3 albedo 	   = get_color_from_texture(material.albedo, info.uv);
+			vec3 textureNormal = get_color_from_texture(material.normal, info.uv);
+			vec3 normal        = calculate_surface_normal(info.triangleId, 
+														  info.normal, 
+														  textureNormal);
+            float metalness = get_color_from_texture(material.metalness, info.uv).b;
+            float roughness = get_color_from_texture(material.roughness, info.uv).g;
+			
+
+            vec3 reflectedColor;
+			ray.origin = info.point;
+            if (metalness < 0.5f) 
+			{
+                // Diffuse reflection for non-metallic surfaces
+				// Offset to prevent self-intersection
+                ray.direction = rand_in_unit_hemisphere(normal, seed);
+                reflectedColor = albedo;
+            } else {
+                // Specular reflection for metallic surfaces
+                ray.direction = reflect(ray.direction, normal);
+                reflectedColor = calculate_reflection(seed, ray, normal, albedo, 
+													  metalness, roughness);
+            }
+
+            color += 0.5f * reflectedColor;
+            attenuation *= albedo;
+        } else {
+            color += attenuation * backgroundColor;
+            break;
+        }
+    }
 	
     vec3 currentPixel = imageLoad(accumulated, gid).rgb;
-	vec4 result = vec4(currentPixel + pixelColor, 1.0f);
+	vec4 result = vec4(currentPixel + color, 1.0f);
     imageStore(accumulated, gid, result);
+}
+
+float rand(vec2 seed) 
+{
+    return fract(sin(dot(seed.xy, vec2(12.9898f, 78.233f))) * 43758.5453f);
+}
+
+float rand(vec2 bounds, vec2 seed) 
+{
+    return bounds.x + (bounds.y - bounds.x) * rand(seed);
+}
+
+vec3 rand_in_unit_sphere(vec2 seed)
+{
+	vec3 randomVector;
+	vec2 bounds = { -1.0f, 1.0f };
+	randomVector.x = rand(bounds, seed);
+	randomVector.y = rand(bounds, seed + 1.0f);
+	randomVector.z = rand(bounds, seed + 2.0f);
+	return normalize(randomVector);
+}
+
+vec3 rand_in_unit_hemisphere(vec3 normal, vec2 seed)
+{
+	vec3 randomVector = rand_in_unit_sphere(seed);
+	if (dot(randomVector, normal) > 0.0f)
+	{
+		return randomVector;
+	}
+	return -randomVector;
+}
+
+vec3 rand_in_unit_hemisphere(vec3 normal, vec2 seed, float roughness) 
+{
+    vec3 randomVec = rand_in_unit_hemisphere(normal, seed);
+    return normalize(normal + randomVec * roughness);
 }
 
 void get_triangle(int triangleId, out Triangle triangle)
@@ -128,6 +239,16 @@ void get_triangle(int triangleId, out Triangle triangle)
 	triangle.uvs[2] = uvs[indices[2]];
 	triangle.materialId = floatBitsToInt(positionsWithMaterial[indices[0]].w);
 }
+
+vec3 get_color_from_texture(int textureId, vec2 uv)
+{
+	if (textureId == -1)
+	{
+		return vec3(0.0f);
+	}
+	return texture(textures[textureId], uv).rgb;
+}
+
 
 bool triangle_intersect(int triangleId, in Ray ray, out HitInfo info)
 {
@@ -184,6 +305,142 @@ bool triangle_intersect(int triangleId, in Ray ray, out HitInfo info)
 			+ triangle.uvs[2] * v;
 			
 	info.materialId = triangle.materialId;
+	info.triangleId = triangleId;
 				
 	return true;
+}
+
+bool aabb_intersect(int nodeId, Ray ray)
+{
+	vec3 invDir = vec3(1.0f) / (ray.direction + EPSILON);
+	vec3 tbot = invDir * (nodes[nodeId].min - ray.origin);
+	vec3 ttop = invDir * (nodes[nodeId].max - ray.origin);
+	vec3 tmin = min(ttop, tbot);
+	vec3 tmax = max(ttop, tbot);
+	float t0 = max(max(tmin.x, tmin.y), tmin.z);
+	float t1 = min(min(tmax.x, tmax.y), tmax.z);
+	return t1 > max(t0, 0.0);
+}
+
+bool hit(in Ray ray, out HitInfo info)
+{
+	int stack[128];
+	int stackPtr = 0;
+	bool result = false;
+	HitInfo tempInfo;
+	
+	stack[0] = rootId;
+	info.distance = viewBounds.y + 1.0f;
+	tempInfo.distance = info.distance + 1.0f;
+	while(stackPtr >= 0)
+	{
+		int nodeId = stack[stackPtr];
+		if (!aabb_intersect(nodeId, ray))
+		{
+			stackPtr--;
+			continue;
+		}
+		// Common case
+		if (nodes[nodeId].leftId != nodes[nodeId].rightId)
+		{
+			stack[stackPtr] = nodes[nodeId].leftId;
+			stackPtr++;
+			stack[stackPtr] = nodes[nodeId].rightId;
+			stackPtr++;
+		} else { // Node is leaf node and contains triangle
+			if (triangle_intersect(nodes[nodeId].rightId, ray, tempInfo) && tempInfo.distance < info.distance)
+			{
+				info = tempInfo;
+				result = true;
+			}
+		}
+		
+		stackPtr--;
+	}
+	
+	return result;
+}
+
+vec3 calculate_surface_normal(int triangleId, vec3 faceNormal, vec3 textureNormal)
+{
+	Triangle triangle;
+	get_triangle(triangleId, triangle);
+	
+	vec3 deltaPos1 = triangle.points[1] - triangle.points[0];
+	vec3 deltaPos2 = triangle.points[2] - triangle.points[0];
+	vec2 deltaUV1 = triangle.uvs[1] - triangle.uvs[0];
+	vec2 deltaUV2 = triangle.uvs[2] - triangle.uvs[0];
+	
+	float r = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV1.y * deltaUV2.x);
+	vec3 tangent   = (deltaPos1 * deltaUV2.y - deltaPos2 * deltaUV1.y) * r;
+	vec3 bitangent = (deltaPos2 * deltaUV1.x - deltaPos1 * deltaUV2.x) * r;
+	vec3 normalFromTexture = textureNormal * 2.0f - 1.0f;
+	
+	mat3 TBN = mat3(tangent, bitangent, faceNormal);
+	vec3 normalInWorldSpace = normalize(TBN * normalFromTexture);
+	
+	return normalize(faceNormal + normalInWorldSpace);
+}
+
+vec3 fresnel_schlick(float cosTheta, vec3 F0) 
+{
+    return F0 + (1.0f - F0) * pow(1.0f - cosTheta, 5.0f);
+}
+
+float ggx_distribution(float roughness, float NdotH) 
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH2 = NdotH * NdotH;
+
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    return a2 / (PI * denom * denom);
+}
+
+float geometry_schlick_ggx(float NdotV, float roughness) 
+{	
+    float r = (roughness + 1.0f);
+    float k = (r * r) / 8.0f;
+
+    float denom = NdotV * (1.0f - k) + k;
+    return NdotV / denom;
+}
+
+float geometry_smith(float NdotV, float NdotL, float roughness)
+{
+    float ggx2 = geometry_schlick_ggx(NdotV, roughness);
+    float ggx1 = geometry_schlick_ggx(NdotL, roughness);
+
+    return ggx1 * ggx2;
+}
+
+vec3 calculate_reflection(vec2 seed, Ray ray, vec3 normal, vec3 albedo, float metalness, float roughness) 
+{
+    vec3 F0 = mix(vec3(0.04f), albedo, metalness);
+	// TODO: hitt light??
+    vec3 L = rand_in_unit_hemisphere(normal, seed, roughness);
+    vec3 V = ray.direction;
+    vec3 H = normalize(V + L);
+	ray.direction = L;
+
+    float NdotL = max(dot(normal, L), 0.0);
+    float NdotV = max(dot(normal, V), 0.0);
+    float NdotH = max(dot(normal, H), 0.0);
+    float HdotV = max(dot(H, V), 0.0);
+
+    vec3 F = fresnel_schlick(HdotV, F0);
+    float D = ggx_distribution(roughness, NdotH);
+    float G = geometry_smith(NdotV, NdotL, roughness);
+
+    vec3 nominator = F * D * G;
+    float denominator = 4.0f * NdotV * NdotL + 0.0001f; 
+    vec3 specular = nominator / denominator;
+
+    vec3 kS = F;
+    vec3 kD = vec3(1.0f) - kS;
+    kD *= 1.0f - metalness; 
+
+    vec3 diffuse = (albedo / PI) * kD;
+
+    return (diffuse + specular) * NdotL;
 }

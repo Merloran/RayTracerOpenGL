@@ -101,8 +101,8 @@ Void SResourceManager::generate_opengl_texture(Texture& texture)
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	texture.bindlessId = glGetTextureHandleARB(texture.gpuId);
 	if (texture.bindlessId == 0)
 	{
@@ -195,11 +195,12 @@ Void SResourceManager::generate_opengl_resources()
 
 Handle<Model> SResourceManager::load_model(const std::filesystem::path &filePath, tinygltf::Node &gltfNode, tinygltf::Model &gltfModel)
 {
-	if (nameToIdModels.find(gltfNode.name) != nameToIdModels.end())
+	const std::string modelName = filePath.stem().string() + gltfNode.name;
+	if (nameToIdModels.find(modelName) != nameToIdModels.end())
 	{
-		SPDLOG_WARN("Model with name {} already exist!", gltfNode.name);
+		SPDLOG_WARN("Model with name {} already exist!", modelName);
 		//TODO: think of it
-		return get_model_handle_by_name(gltfNode.name);
+		return get_model_handle_by_name(modelName);
 	}
 	tinygltf::Mesh& gltfMesh = gltfModel.meshes[gltfNode.mesh];
 
@@ -213,7 +214,7 @@ Handle<Model> SResourceManager::load_model(const std::filesystem::path &filePath
 	for (Int32 i = 0; i < gltfMesh.primitives.size(); i++)
 	{
 		tinygltf::Primitive& primitive = gltfMesh.primitives[i];
-		std::string meshName = gltfNode.name + std::to_string(i);
+		std::string meshName = modelName + std::to_string(i);
 		Handle<Mesh> mesh = load_mesh(meshName, primitive, gltfModel);
 		model.meshes.push_back(mesh);
 		Handle<Material> material = get_material_handle_by_name("DefaultMaterial");
@@ -227,8 +228,8 @@ Handle<Model> SResourceManager::load_model(const std::filesystem::path &filePath
 	}
 
 	const Handle<Model> modelHandle{ Int32(modelId) };
-	nameToIdModels[gltfNode.name] = modelHandle;
-	model.name = gltfNode.name;
+	nameToIdModels[modelName] = modelHandle;
+	model.name = modelName;
 
 	return modelHandle;
 }

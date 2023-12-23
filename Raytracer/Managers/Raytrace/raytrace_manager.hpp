@@ -1,5 +1,6 @@
 #pragma once
 #include "../Render/Common/shader.hpp"
+#include "BVH/bvh_builder.hpp"
 
 struct GpuMaterial
 {
@@ -20,29 +21,36 @@ public:
 
 	Void startup();
 
-	Void update(Camera& camera);
+	Void update(Camera& camera, Float32 deltaTime);
+	Void generate_rays(Camera& camera);
 	Void resize_opengl_texture(UInt32& texture, const glm::ivec2 &size);
 
 	[[nodiscard]]
 	Int32 get_frame_count() const;
+	[[nodiscard]]
+	glm::vec3 get_background_color() const;
 
 	Void shutdown();
 
+	Int32 maxBouncesCount;
 private:
 	SRaytraceManager() = default;
 	~SRaytraceManager() = default;
+	static constexpr glm::ivec2 WORKGROUP_SIZE{ 16, 16 };
 
 	Shader rayGeneration, triangle, screen;
+	BVHBuilder bvh;
 	std::vector<glm::vec4> positionsWithMaterial;
 	std::vector<glm::vec4> normals;
 	std::vector<glm::vec2> uvs;
 	std::vector<UInt32> indexes;
 	std::vector<UInt64> textures;
 	std::vector<GpuMaterial> materials;
-	glm::vec3 originPixel, pixelDeltaU, pixelDeltaV;
+	glm::vec3 originPixel, pixelDeltaU, pixelDeltaV, backgroundColor;
 	glm::ivec2 imageSize;
-	UInt32 ssbo[6]; //Positions, Normals, Uvs, Indexes, TextureHandles, Materials
+	Float32 renderTime;
+	UInt32 ssbo[7]; //Positions, Normals, Uvs, Indexes, TextureHandles, Materials, BVHNodes
 	UInt32 screenTexture, directionTexture;
-	Int32 frameCount;
+	Int32 frameCount, trianglesCount;
 };
 

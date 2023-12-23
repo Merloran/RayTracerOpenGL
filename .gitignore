@@ -364,3 +364,4 @@ FodyWeavers.xsd
 
 # Temporary not included to repo because of huge size
 Assets/
+*.bvh

@@ -11,6 +11,7 @@
 #include "../Resource/Common/material.hpp"
 #include "../Resource/Common/mesh.hpp"
 #include "../Resource/Common/texture.hpp"
+#include "BVH/bvh_node.hpp"
 
 SRaytraceManager& SRaytraceManager::get()
 {
@@ -27,8 +28,9 @@ Void SRaytraceManager::startup()
 	screen.create("Resources/Shaders/Screen.vert", "Resources/Shaders/Screen.frag");
 	screen.use();
 	screen.set_int("accumulated", 0);
-
-	frameCount = 1;
+	renderTime = 0.0f;
+	maxBouncesCount = 2;
+	backgroundColor = { 0.0f, 0.71f, 0.71f };
 
 	textures.reserve(resourceManager.get_textures().size());
 	for (const Texture& texture : resourceManager.get_textures())
@@ -64,6 +66,7 @@ Void SRaytraceManager::startup()
 	normals.reserve(vertexesSize);
 	uvs.reserve(vertexesSize);
 	indexes.reserve(indexesSize);
+	trianglesCount = Int32(indexesSize / 3);
 
 	for (const Model& model : models)
 	{
@@ -113,11 +116,13 @@ Void SRaytraceManager::startup()
 			{
 				indexes.emplace_back(mesh.indexes[j] + indexesOffset);
 			}
-			indexesOffset += mesh.indexes.size();
+			indexesOffset += mesh.positions.size();
 		}
 	}
+
+	bvh.create_tree(positionsWithMaterial, indexes);
 	
-    glCreateBuffers(6, &ssbo[0]);
+    glCreateBuffers(7, &ssbo[0]);
 
 	//Positions
 	glNamedBufferStorage(ssbo[0],
@@ -155,6 +160,12 @@ Void SRaytraceManager::startup()
 				 materials.data(),
 				 GL_DYNAMIC_STORAGE_BIT);
 
+	//Materials
+	glNamedBufferStorage(ssbo[6],
+				 bvh.hierarchy.size() * sizeof(BVHNode),
+				 bvh.hierarchy.data(),
+				 GL_DYNAMIC_STORAGE_BIT);
+
 
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo[0]);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo[1]);
@@ -162,16 +173,18 @@ Void SRaytraceManager::startup()
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo[3]);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo[4]);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssbo[5]);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, ssbo[6]);
 }
 
 
-Void SRaytraceManager::update(Camera &camera)
+Void SRaytraceManager::update(Camera &camera, Float32 deltaTime)
 {
 	SDisplayManager &displayManager = SDisplayManager::get();
 	SRenderManager &renderManager = SRenderManager::get();
 
 	const glm::ivec2& size = displayManager.get_window_size();
-	const glm::ivec2 workGroupsCount = size / 16;
+
+	renderTime += deltaTime;
 	const Bool hasWindowResized = imageSize != size;
 	const Bool hasCameraChanged = camera.has_changed();
 
@@ -186,37 +199,21 @@ Void SRaytraceManager::update(Camera &camera)
 
 	if (hasWindowResized || hasCameraChanged)
 	{
-		camera.set_camera_changed(false);
-		frameCount = 1;
-		const Float32 theta = glm::radians(camera.get_fov());
-		const Float32 h = glm::tan(theta * 0.5f);
-		glm::vec2 viewportSize;
-		viewportSize.y = 2.0f * h;
-		viewportSize.x = viewportSize.y * displayManager.get_aspect_ratio();
-
-		const glm::vec3 viewportU = Float32(viewportSize.x) * camera.get_right();
-		const glm::vec3 viewportV = Float32(viewportSize.y) * camera.get_up();
-
-		pixelDeltaU = viewportU / Float32(size.x);
-		pixelDeltaV = viewportV / Float32(size.y);
-		originPixel = camera.get_position() + camera.get_forward() + (pixelDeltaU - viewportU + pixelDeltaV - viewportV) * 0.5f;
-		
-		rayGeneration.use();
-		rayGeneration.set_vec3("cameraPosition", camera.get_position());
-		rayGeneration.set_vec3("originPixel", originPixel);
-		rayGeneration.set_vec3("pixelDeltaU", pixelDeltaU);
-		rayGeneration.set_vec3("pixelDeltaV", pixelDeltaV);
-		rayGeneration.set_ivec2("imageSize", size);
-		glDispatchCompute(workGroupsCount.x, workGroupsCount.y, 1);
-		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		generate_rays(camera);
 	}
-
 	triangle.use();
+	triangle.set_vec3("backgroundColor", backgroundColor);
 	triangle.set_vec3("cameraPosition", camera.get_position());
-	triangle.set_ivec2("imageSize", size);
+	triangle.set_vec3("pixelDeltaU", pixelDeltaU);
+	triangle.set_vec3("pixelDeltaV", pixelDeltaV);
+	triangle.set_ivec2("imageSize", imageSize);
 	triangle.set_vec2("viewBounds", camera.get_view_bounds());
-	triangle.set_int("trianglesCount", Int32(indexes.size() / 3));
-	
+	triangle.set_float("time", renderTime);
+	triangle.set_int("trianglesCount", trianglesCount);
+	triangle.set_int("maxBouncesCount", maxBouncesCount);
+	triangle.set_int("rootId", bvh.rootId);
+
+	const glm::ivec2 workGroupsCount = imageSize / WORKGROUP_SIZE;
 	glDispatchCompute(workGroupsCount.x, workGroupsCount.y, 1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
@@ -226,6 +223,36 @@ Void SRaytraceManager::update(Camera &camera)
 	glBindTexture(GL_TEXTURE_2D, screenTexture);
 	renderManager.draw_quad();
 	frameCount++;
+}
+
+Void SRaytraceManager::generate_rays(Camera& camera)
+{
+	const SDisplayManager& displayManager = SDisplayManager::get();
+	const glm::ivec2 workGroupsCount = imageSize / WORKGROUP_SIZE;
+
+	camera.set_camera_changed(false);
+	frameCount = 1;
+	const Float32 theta = glm::radians(camera.get_fov());
+	const Float32 h = glm::tan(theta * 0.5f);
+	glm::vec2 viewportSize;
+	viewportSize.y = 2.0f * h;
+	viewportSize.x = viewportSize.y * displayManager.get_aspect_ratio();
+
+	const glm::vec3 viewportU = Float32(viewportSize.x) * camera.get_right();
+	const glm::vec3 viewportV = Float32(viewportSize.y) * camera.get_up();
+
+	pixelDeltaU = viewportU / Float32(imageSize.x);
+	pixelDeltaV = viewportV / Float32(imageSize.y);
+	originPixel = camera.get_position() + camera.get_forward() + (pixelDeltaU - viewportU + pixelDeltaV - viewportV) * 0.5f;
+
+	rayGeneration.use();
+	rayGeneration.set_vec3("cameraPosition", camera.get_position());
+	rayGeneration.set_vec3("originPixel", originPixel);
+	rayGeneration.set_vec3("pixelDeltaU", pixelDeltaU);
+	rayGeneration.set_vec3("pixelDeltaV", pixelDeltaV);
+	rayGeneration.set_ivec2("imageSize", imageSize);
+	glDispatchCompute(workGroupsCount.x, workGroupsCount.y, 1);
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 }
 
 Void SRaytraceManager::resize_opengl_texture(UInt32& texture, const glm::ivec2& size)
@@ -251,8 +278,16 @@ Int32 SRaytraceManager::get_frame_count() const
 	return frameCount;
 }
 
+glm::vec3 SRaytraceManager::get_background_color() const
+{
+	return backgroundColor;
+}
+
 Void SRaytraceManager::shutdown()
 {
 	glDeleteBuffers(6, ssbo);
 	glDeleteTextures(1, &screenTexture);
+	screen.shutdown();
+	triangle.shutdown();
+	rayGeneration.shutdown();
 }
