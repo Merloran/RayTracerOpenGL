@@ -5,6 +5,7 @@ class BVHBuilder
 {
 public:
 	Void create_tree(const std::vector<glm::vec4>& positions, const std::vector<UInt32>& indexes);
+	Void fill_stackless_data(Int32 nodeId, Int32 parentId);
 	
 	std::vector<BVHNode> hierarchy;
 	Int32 rootId;

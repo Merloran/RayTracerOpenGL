@@ -40,6 +40,10 @@ struct BVHNode
     int leftId;
 	vec3 max;
     int rightId;
+	int parentId;
+	int nextId;
+	int skipId;
+	int primitiveId;
 };
 
 struct Material
@@ -395,39 +399,32 @@ bool aabb_intersect(int nodeId, Ray ray, out float distance)
 
 bool hit(in Ray ray, out HitInfo info)
 {
-	int stack[64];
-	int stackPtr = 0;
 	bool result = false;
 	HitInfo tempInfo;
 	
-	stack[0] = rootId;
 	info.distance = viewBounds.y + 1.0f;
 	tempInfo.distance = info.distance + 1.0f;
+	int nodeId = rootId;
 	
-	while(stackPtr >= 0)
+	while (nodeId != -1)
 	{
-		int nodeId = stack[stackPtr];
 		float distanceSquared;
 		if (!aabb_intersect(nodeId, ray, distanceSquared) || distanceSquared > info.distance * info.distance)
 		{
-			stackPtr--;
+			nodeId = nodes[nodeId].skipId;
 			continue;
 		}
-		// Common case
-		if (nodes[nodeId].leftId != nodes[nodeId].rightId)
-		{
-			stack[stackPtr] = nodes[nodeId].rightId;
-			stackPtr++;
-			stack[stackPtr] = nodes[nodeId].leftId;
-			stackPtr++;
-		} else { // Node is leaf node and contains triangle
-			if (triangle_intersect(nodes[nodeId].rightId, ray, tempInfo) && tempInfo.distance < info.distance)
+		
+		
+		if (nodes[nodeId].primitiveId != -1)
+		{ // Node is leaf node and contains triangle
+			if (triangle_intersect(nodes[nodeId].primitiveId, ray, tempInfo) && tempInfo.distance < info.distance)
 			{
 				info = tempInfo;
 				result = true;
 			}
 		}
-		stackPtr--;
+		nodeId = nodes[nodeId].nextId;
 	}
 	
 	return result;

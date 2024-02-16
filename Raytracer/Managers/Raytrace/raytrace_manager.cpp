@@ -24,7 +24,7 @@ Void SRaytraceManager::startup()
 	SPDLOG_INFO("Raytrace Manager startup.");
 	SResourceManager& resourceManager = SResourceManager::get();
 	rayGeneration.create("Resources/Shaders/RayGeneration.comp");
-	rayTrace.create("Resources/Shaders/Triangle.comp");
+	rayTrace.create("Resources/Shaders/RayTrace.comp");
 	screen.create("Resources/Shaders/Screen.vert", "Resources/Shaders/Screen.frag");
 	screen.use();
 	screen.set_int("accumulated", 0);

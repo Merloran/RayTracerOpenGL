@@ -45,9 +45,56 @@ Void BVHBuilder::create_tree(const std::vector<glm::vec4>& positions, const std:
     SPDLOG_INFO("Leaf nodes created...");
     spdlog::set_pattern("%v");
     rootId = create_hierarchy(objects, 0, objects.size());
+    fill_stackless_data(rootId, -1);
     save_tree("scene.bvh");
     spdlog::set_pattern("%+");
     SPDLOG_INFO("Build tree complete.");
+}
+
+Void BVHBuilder::fill_stackless_data(Int32 nodeId, Int32 parentId)
+{
+	BVHNode& node = hierarchy[nodeId];
+    node.parentId = parentId;
+
+    if (node.leftId != node.rightId)
+    {
+        node.nextId = node.leftId;
+        node.primitiveId = -1;
+        if (parentId != -1) 
+        {
+            const BVHNode& parentNode = hierarchy[parentId];
+            if (nodeId == parentNode.leftId)
+            {
+                node.skipId = parentNode.rightId;
+            } else {
+                node.skipId = parentNode.skipId;
+            }
+        } else {
+            node.skipId = -1;
+        }
+        fill_stackless_data(node.leftId, nodeId);
+        fill_stackless_data(node.rightId, nodeId);
+        return;
+    }
+
+	// Node is leaf
+    node.primitiveId = node.leftId;
+    if (parentId == -1) // Tree is built from one node
+    {
+        node.nextId = -1;
+        node.skipId = -1;
+        return;
+    }
+
+    const BVHNode& parentNode = hierarchy[parentId];
+    if (nodeId == parentNode.leftId)
+    {
+        node.nextId = parentNode.rightId;
+        node.skipId = parentNode.rightId;
+    } else {
+        node.nextId = parentNode.skipId;
+        node.skipId = parentNode.skipId;
+     }
 }
 
 Int32 BVHBuilder::create_hierarchy(const std::vector<Int32> &srcObjects, Int32 begin, Int32 end)
