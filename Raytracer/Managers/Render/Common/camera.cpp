@@ -9,7 +9,7 @@ Void Camera::initialize(const glm::vec3& position)
 	forward			= {  0.0f,  0.0f, -1.0f };
 	up				= {  0.0f,  1.0f,  0.0f };
 	right			= {  1.0f,  0.0f,  0.0f };
-	viewBounds		= {  0.001f,  300.0f };
+	viewBounds		= {  0.001f,  5000.0f };
 	yaw				= -90.0f;
 	pitch			= 0.0f;
 	speed			= 10.0f;

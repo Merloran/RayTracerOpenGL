@@ -24,13 +24,13 @@ Void SRaytraceManager::startup()
 	SPDLOG_INFO("Raytrace Manager startup.");
 	SResourceManager& resourceManager = SResourceManager::get();
 	rayGeneration.create("Resources/Shaders/RayGeneration.comp");
-	triangle.create("Resources/Shaders/Triangle.comp");
+	rayTrace.create("Resources/Shaders/Triangle.comp");
 	screen.create("Resources/Shaders/Screen.vert", "Resources/Shaders/Screen.frag");
 	screen.use();
 	screen.set_int("accumulated", 0);
 	renderTime = 0.0f;
-	maxBouncesCount = 2;
-	backgroundColor = { 0.0f, 0.71f, 0.71f };
+	maxBouncesCount = 0;
+	backgroundColor = { 0.0f, 0.0f, 0.0f };//{ 0.0f, 0.71f, 0.71f };
 
 	textures.reserve(resourceManager.get_textures().size());
 	for (const Texture& texture : resourceManager.get_textures())
@@ -67,6 +67,8 @@ Void SRaytraceManager::startup()
 	uvs.reserve(vertexesSize);
 	indexes.reserve(indexesSize);
 	trianglesCount = Int32(indexesSize / 3);
+	// Predicting emission triangles count
+	emissionTriangles.reserve(glm::max(Int32(trianglesCount * 0.01), 1));
 
 	for (const Model& model : models)
 	{
@@ -115,6 +117,11 @@ Void SRaytraceManager::startup()
 			for (Int32 j = 0; j < mesh.indexes.size(); ++j)
 			{
 				indexes.emplace_back(mesh.indexes[j] + indexesOffset);
+				const GpuMaterial& gpuMaterial = materials[*reinterpret_cast<Int32*>(&positionsWithMaterial[mesh.indexes[j] + indexesOffset].w)];
+				if (j % 3 == 0 && gpuMaterial.emission != -1)
+				{
+					emissionTriangles.emplace_back(mesh.indexes[j] + indexesOffset);
+				}
 			}
 			indexesOffset += mesh.positions.size();
 		}
@@ -122,7 +129,7 @@ Void SRaytraceManager::startup()
 
 	bvh.create_tree(positionsWithMaterial, indexes);
 	
-    glCreateBuffers(7, &ssbo[0]);
+    glCreateBuffers(8, &ssbo[0]);
 
 	//Positions
 	glNamedBufferStorage(ssbo[0],
@@ -160,10 +167,16 @@ Void SRaytraceManager::startup()
 				 materials.data(),
 				 GL_DYNAMIC_STORAGE_BIT);
 
-	//Materials
+	//BVHNodes
 	glNamedBufferStorage(ssbo[6],
 				 bvh.hierarchy.size() * sizeof(BVHNode),
 				 bvh.hierarchy.data(),
+				 GL_DYNAMIC_STORAGE_BIT);
+
+	//EmissionTriangles
+	glNamedBufferStorage(ssbo[7],
+				 emissionTriangles.size() * sizeof(UInt32),
+				 emissionTriangles.data(),
 				 GL_DYNAMIC_STORAGE_BIT);
 
 
@@ -174,6 +187,7 @@ Void SRaytraceManager::startup()
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo[4]);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssbo[5]);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, ssbo[6]);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, ssbo[7]);
 }
 
 
@@ -200,18 +214,22 @@ Void SRaytraceManager::update(Camera &camera, Float32 deltaTime)
 	if (hasWindowResized || hasCameraChanged)
 	{
 		generate_rays(camera);
+		renderTime = 0.0f;
 	}
-	triangle.use();
-	triangle.set_vec3("backgroundColor", backgroundColor);
-	triangle.set_vec3("cameraPosition", camera.get_position());
-	triangle.set_vec3("pixelDeltaU", pixelDeltaU);
-	triangle.set_vec3("pixelDeltaV", pixelDeltaV);
-	triangle.set_ivec2("imageSize", imageSize);
-	triangle.set_vec2("viewBounds", camera.get_view_bounds());
-	triangle.set_float("time", renderTime);
-	triangle.set_int("trianglesCount", trianglesCount);
-	triangle.set_int("maxBouncesCount", maxBouncesCount);
-	triangle.set_int("rootId", bvh.rootId);
+	rayTrace.use();
+	rayTrace.set_vec3("backgroundColor", backgroundColor);
+	rayTrace.set_vec3("cameraPosition", camera.get_position());
+	rayTrace.set_vec3("pixelDeltaU", pixelDeltaU);
+	rayTrace.set_vec3("pixelDeltaV", pixelDeltaV);
+	rayTrace.set_ivec2("imageSize", imageSize);
+	rayTrace.set_vec2("viewBounds", camera.get_view_bounds());
+	rayTrace.set_float("time", renderTime);
+	rayTrace.set_int("frameCount", frameCount);
+	rayTrace.set_int("trianglesCount", trianglesCount);
+	rayTrace.set_int("emissionTrianglesCount", emissionTriangles.size());
+	rayTrace.set_int("maxBouncesCount", maxBouncesCount);
+	rayTrace.set_int("rootId", bvh.rootId);
+	rayTrace.set_int("environmentMapId", textures.size() - 1);
 
 	const glm::ivec2 workGroupsCount = imageSize / WORKGROUP_SIZE;
 	glDispatchCompute(workGroupsCount.x, workGroupsCount.y, 1);
@@ -283,11 +301,18 @@ glm::vec3 SRaytraceManager::get_background_color() const
 	return backgroundColor;
 }
 
+Void SRaytraceManager::reload_shaders()
+{
+	rayTrace.reload();
+	screen.reload();
+	rayGeneration.reload();
+}
+
 Void SRaytraceManager::shutdown()
 {
-	glDeleteBuffers(6, ssbo);
+	glDeleteBuffers(8, ssbo);
 	glDeleteTextures(1, &screenTexture);
 	screen.shutdown();
-	triangle.shutdown();
+	rayTrace.shutdown();
 	rayGeneration.shutdown();
 }

@@ -8,5 +8,9 @@ in vec2 uvsFragment;
 
 void main()
 { 
-    color = vec4(texture(accumulated, uvsFragment).rgb * invFrameCount, 1.0f);
+	vec3 c = texture(accumulated, uvsFragment).rgb * invFrameCount;
+	//const float gamma = 1.2f;
+	//c = pow(c, vec3(1.0f / gamma));
+	c = sqrt(c);
+    color = vec4(c, 1.0f);
 }

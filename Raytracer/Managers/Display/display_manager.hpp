@@ -29,7 +29,7 @@ private:
 
 	std::string name		  = "BaseWindow";
 	GLFWwindow* window		  = nullptr;
-	glm::ivec2 windowSize	  = { 1024, 768 };
+	glm::ivec2 windowSize	  = { 800, 600 };
 	glm::ivec2 frameBufferSize;
 };
 

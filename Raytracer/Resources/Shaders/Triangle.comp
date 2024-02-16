@@ -2,6 +2,8 @@
 #extension GL_ARB_bindless_texture : enable
 #define EPSILON 0.0000001f
 #define PI 3.1415926535897932384626433832795f
+#define ONE_OVER_PI 1.0f / 3.1415926535897932384626433832795f
+#define ONE_OVER_TWO_PI 1.0f / (2.0f * 3.1415926535897932384626433832795f)
 
 layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
@@ -16,11 +18,12 @@ struct HitInfo
 {
 	vec3 point;
 	vec3 normal;
+	vec3 barycentric;
 	vec2 uv;
 	float distance;
-	bool frontFace;
 	int materialId;
 	int triangleId;
+	bool frontFace;
 };
 
 struct Triangle
@@ -83,6 +86,11 @@ layout(std430, binding = 6) readonly buffer Nodes
     BVHNode nodes[];
 };
 
+layout(std430, binding = 7) readonly buffer EmissionTriangles
+{
+    uint emissionTriangles[];
+};
+
 layout (rgba32f, binding = 0) readonly uniform image2D rayDirections;
 layout (rgba32f, binding = 1) uniform image2D accumulated;
 
@@ -93,28 +101,41 @@ uniform vec3  pixelDeltaV;
 uniform vec2  viewBounds;
 uniform ivec2 imageSize;
 uniform float time;
+uniform int   frameCount;
 uniform int   maxBouncesCount;
 uniform int   trianglesCount;
+uniform int   emissionTrianglesCount;
 uniform int   rootId;
+uniform int   environmentMapId;
 
-float rand(vec2 coords);
-float rand(vec2 bounds, vec2 seed);
-vec3 rand_in_unit_sphere(vec2 seed);
-vec3 rand_in_unit_hemisphere(vec3 normal, vec2 seed);
-vec3 rand_in_unit_hemisphere(vec3 normal, vec2 seed, float roughness);
+vec2 seed;
 
+float rand();
+float rand(vec2 bounds);
+vec3  rand_in_unit_sphere();
+vec3  rand_in_unit_hemisphere(vec3 normal);
+vec3  random_cosine_direction();
 
-bool triangle_intersect(int triangleId, in Ray ray, out HitInfo info);
-bool aabb_intersect(int nodeId, Ray ray);
-void get_triangle(int triangleId, out Triangle triangle);
-vec3 get_color_from_texture(int textureId, vec2 uv);
-bool hit(in Ray ray, out HitInfo info);
-vec3 calculate_surface_normal(int triangleId, vec3 faceNormal, vec3 textureNormal);
-vec3 fresnel_schlick(float cosTheta, vec3 F0);
-float ggx_distribution(float roughness, float NdotH);
-float geometry_schlick_ggx(float NdotV, float roughness);
-float geometry_smith(float NdotV, float NdotL, float roughness);
-vec3 calculate_reflection(vec2 seed, Ray ray, vec3 normal, vec3 albedo, float metalness, float roughness);
+vec2  sample_sphere(vec3 direction);
+bool  triangle_intersect(int triangleId, in Ray ray, out HitInfo info);
+float squared_aabb_distance(vec3 point, vec3 aabbmin, vec3 aabbmax);
+bool  aabb_intersect(int nodeId, Ray ray, out float distance);
+void  get_triangle(int triangleId, out Triangle triangle);
+vec4  get_color_from_texture(int textureId, vec2 uv);
+bool  hit(in Ray ray, out HitInfo info);
+vec3  calculate_surface_normal(int triangleId, vec3 faceNormal, vec3 textureNormal);
+float get_cosine_pdf(vec3 normal, vec3 direction);
+vec3  get_cosine_direction(vec3 normal);
+
+float get_triangle_area(int triangleId);
+float get_triangle_pdf(int triangleId, vec3 origin, vec3 direction);
+vec3  get_random_in_triangle(int triangleId, vec3 origin);
+
+float get_lights_pdf(vec3 origin, vec3 direction);
+vec3  get_random_light(vec3 origin);
+
+vec3  get_pdf_direction(vec3 origin, vec3 normal);
+float get_pdf_value(vec3 origin, vec3 direction, vec3 normal);
 
 void main()
 {
@@ -123,89 +144,102 @@ void main()
 	{
         return;
     }
-	vec2 seed = vec2(gid) + vec2(time);
-    vec3 attenuation = vec3(1.0f);
-    vec3 color = vec3(0.0f);
+	seed = vec2(gid) + time;
+    vec3 color = vec3(1.0f);
 	
 	Ray ray;
 	ray.origin = cameraPosition;
-	
-	vec2 offset = vec2(rand(seed), rand(-seed)) - 0.5f;
+	const int numberOfSectors = 64;
+	ivec2 gridOffset = ivec2(mod(frameCount, numberOfSectors), int(frameCount / numberOfSectors));
+	gridOffset = ivec2(mod(gridOffset, numberOfSectors));
+	vec2 offset = (vec2(rand(), rand()) + vec2(gridOffset)) / float(numberOfSectors) - 0.5f;
 	vec3 randomOffset = (offset.x * pixelDeltaU) + (offset.y * pixelDeltaV);
 	ray.direction = normalize(imageLoad(rayDirections, gid).xyz + randomOffset);
 	
 	
-	for (int bounce = 0; bounce < maxBouncesCount; ++bounce) 
+	for (int bounce = 0; bounce < maxBouncesCount + 1; ++bounce) 
 	{
         HitInfo info;
-        bool hitSomething = false;
-
-        // Check for intersection with the scene
-		hitSomething = hit(ray, info);
-
-        if (hitSomething) 
+        if (!hit(ray, info)) 
 		{
-			Material material  = materials[info.materialId];
-            vec3 albedo 	   = get_color_from_texture(material.albedo, info.uv);
-			vec3 textureNormal = get_color_from_texture(material.normal, info.uv);
-			vec3 normal        = calculate_surface_normal(info.triangleId, 
-														  info.normal, 
-														  textureNormal);
-            float metalness = get_color_from_texture(material.metalness, info.uv).b;
-            float roughness = get_color_from_texture(material.roughness, info.uv).g;
-			
-
-            vec3 reflectedColor;
-			ray.origin = info.point;
-            if (metalness < 0.5f) 
-			{
-                // Diffuse reflection for non-metallic surfaces
-				// Offset to prevent self-intersection
-                ray.direction = rand_in_unit_hemisphere(normal, seed);
-                reflectedColor = albedo;
-            } else {
-                // Specular reflection for metallic surfaces
-                ray.direction = reflect(ray.direction, normal);
-                reflectedColor = calculate_reflection(seed, ray, normal, albedo, 
-													  metalness, roughness);
-            }
-
-            color += 0.5f * reflectedColor;
-            attenuation *= albedo;
-        } else {
-            color += attenuation * backgroundColor;
+			vec2 uv = sample_sphere(ray.direction);
+			vec3 background = texture(textures[environmentMapId], uv).rgb;
+            color *= background;
             break;
-        }
+		}
+		
+		Material material  = materials[info.materialId];
+		vec3 albedo 	   = get_color_from_texture(material.albedo, info.uv).rgb;
+		vec3 textureNormal = get_color_from_texture(material.normal, info.uv).rgb;
+		vec3 emission 	   = get_color_from_texture(material.emission, info.uv).rgb;
+		//NORMALS ARE GOOD!
+		vec3 normal        = calculate_surface_normal(info.triangleId, 
+													  info.normal, 
+													  textureNormal);
+		float metalness = get_color_from_texture(material.metalness, info.uv).b;
+		//float roughness = get_color_from_texture(material.roughness, info.uv).g;
+		if (emission.x > 0.0f) // Material is light
+		{
+			if (!info.frontFace)
+			{
+				color *= 0.0f;
+			} else {
+				color *= emission * 15.0f;
+			}
+            break;
+		}
+		
+		ray.origin = info.point;
+		if (metalness > 0.0f) // Material is metal
+		{
+			vec3 reflectedRay = reflect(ray.direction, normal);
+			vec3 randomRay = rand_in_unit_sphere();
+			ray.direction = normalize(reflectedRay + randomRay * (1.0f - metalness));
+			color *= albedo;
+			continue;
+		}
+		
+		ray.direction = normalize(get_pdf_direction(ray.origin, normal));
+		// Material is lambertian
+		float scatteringPDF = get_cosine_pdf(normal, ray.direction);
+		float pdfValue = get_pdf_value(ray.origin, ray.direction, normal);
+		
+		color *= albedo * scatteringPDF / pdfValue;
     }
 	
+	//if (any(isnan(color)) || any(isinf(color)))
+	//{
+	//	color = vec3(0.0f);
+	//}
     vec3 currentPixel = imageLoad(accumulated, gid).rgb;
 	vec4 result = vec4(currentPixel + color, 1.0f);
     imageStore(accumulated, gid, result);
 }
 
-float rand(vec2 seed) 
+float rand() 
 {
-    return fract(sin(dot(seed.xy, vec2(12.9898f, 78.233f))) * 43758.5453f);
+    seed *= fract(sin(dot(seed, vec2(12.9898, 78.233f))) * 43758.5453f);
+    return fract(sin(dot(seed, vec2(12.9898, 78.233f))) * 43758.5453f);
 }
 
-float rand(vec2 bounds, vec2 seed) 
+float rand(vec2 bounds) 
 {
-    return bounds.x + (bounds.y - bounds.x) * rand(seed);
+    return bounds.x + (bounds.y - bounds.x) * rand();
 }
 
-vec3 rand_in_unit_sphere(vec2 seed)
+vec3 rand_in_unit_sphere()
 {
 	vec3 randomVector;
 	vec2 bounds = { -1.0f, 1.0f };
-	randomVector.x = rand(bounds, seed);
-	randomVector.y = rand(bounds, seed + 1.0f);
-	randomVector.z = rand(bounds, seed + 2.0f);
+	randomVector.x = rand(bounds);
+	randomVector.y = rand(bounds);
+	randomVector.z = rand(bounds);
 	return normalize(randomVector);
 }
 
-vec3 rand_in_unit_hemisphere(vec3 normal, vec2 seed)
+vec3 rand_in_unit_hemisphere(vec3 normal)
 {
-	vec3 randomVector = rand_in_unit_sphere(seed);
+	vec3 randomVector = rand_in_unit_sphere();
 	if (dot(randomVector, normal) > 0.0f)
 	{
 		return randomVector;
@@ -213,10 +247,26 @@ vec3 rand_in_unit_hemisphere(vec3 normal, vec2 seed)
 	return -randomVector;
 }
 
-vec3 rand_in_unit_hemisphere(vec3 normal, vec2 seed, float roughness) 
+vec3 random_cosine_direction()
 {
-    vec3 randomVec = rand_in_unit_hemisphere(normal, seed);
-    return normalize(normal + randomVec * roughness);
+	float r1 = rand();
+	float r2 = rand();
+	
+	float phi = 2.0f * PI * r1;
+	vec3 result;
+	result.x = cos(phi) * sqrt(r2);
+	result.y = sin(phi) * sqrt(r2);
+	result.z = sqrt(1.0f - r2);
+
+	return result;
+}
+
+vec2 sample_sphere(vec3 direction)
+{
+	vec2 uv;
+	uv.x = (atan(-direction.z, direction.x) + PI) * ONE_OVER_TWO_PI;
+	uv.y = acos(direction.y) * ONE_OVER_PI;
+    return uv;
 }
 
 void get_triangle(int triangleId, out Triangle triangle)
@@ -228,6 +278,7 @@ void get_triangle(int triangleId, out Triangle triangle)
 		indexes[triangleId + 2]
 	};
 	
+	triangle.materialId = floatBitsToInt(positionsWithMaterial[indices[0]].w);
 	triangle.points[0] = positionsWithMaterial[indices[0]].xyz;
 	triangle.points[1] = positionsWithMaterial[indices[1]].xyz;
 	triangle.points[2] = positionsWithMaterial[indices[2]].xyz;
@@ -237,18 +288,16 @@ void get_triangle(int triangleId, out Triangle triangle)
 	triangle.uvs[0] = uvs[indices[0]];
 	triangle.uvs[1] = uvs[indices[1]];
 	triangle.uvs[2] = uvs[indices[2]];
-	triangle.materialId = floatBitsToInt(positionsWithMaterial[indices[0]].w);
 }
 
-vec3 get_color_from_texture(int textureId, vec2 uv)
+vec4 get_color_from_texture(int textureId, vec2 uv)
 {
 	if (textureId == -1)
 	{
-		return vec3(0.0f);
+		return vec4(0.0f, 0.0f, 0.0f, 1.0f);
 	}
-	return texture(textures[textureId], uv).rgb;
+	return texture(textures[textureId], uv);
 }
-
 
 bool triangle_intersect(int triangleId, in Ray ray, out HitInfo info)
 {
@@ -262,7 +311,7 @@ bool triangle_intersect(int triangleId, in Ray ray, out HitInfo info)
 	dirXe2 = cross(ray.direction, edge2);
 	det = dot(edge1, dirXe2);
 	
-	if (det > -EPSILON && det < EPSILON)
+	if (abs(det) < EPSILON)
     {
 		return false;    // This ray is parallel to this triangle.
 	}
@@ -285,46 +334,68 @@ bool triangle_intersect(int triangleId, in Ray ray, out HitInfo info)
 	}
 	
     // At this stage we can compute distance to find out where the intersection point is on the line.
-    info.distance = invDet * dot(edge2, sXe1);
+    float d = invDet * dot(edge2, sXe1);
 
-    if (info.distance < viewBounds.x || info.distance > viewBounds.y)
+    if (d < viewBounds.x || d > viewBounds.y)
     {
 		// This means that there is a line intersection but not a ray intersection.
 		return false;
     }
 	
-	info.point = ray.origin + ray.direction * info.distance;
+	info.materialId = triangle.materialId;
 	float w = 1.0f - u - v;
+	info.uv = triangle.uvs[0] * w
+			+ triangle.uvs[1] * u
+			+ triangle.uvs[2] * v;
+	if (get_color_from_texture(materials[info.materialId].albedo, info.uv).a < 0.2f)
+	{
+		return false;
+	}
+	info.distance = d;
+	info.point = ray.origin + ray.direction * d;
+	info.barycentric = vec3(w, u, v);
 	info.normal = triangle.normals[0] * w 
 				+ triangle.normals[1] * u 
 				+ triangle.normals[2] * v;
 	info.normal = normalize(info.normal);
+	info.frontFace = dot(info.normal, ray.direction) < 0.0f;
+	if (!info.frontFace)
+	{
+		info.normal = -info.normal;
+	}
 	
-	info.uv = triangle.uvs[0] * w 
-			+ triangle.uvs[1] * u 
-			+ triangle.uvs[2] * v;
-			
-	info.materialId = triangle.materialId;
 	info.triangleId = triangleId;
 				
 	return true;
 }
 
-bool aabb_intersect(int nodeId, Ray ray)
+float squared_aabb_distance(vec3 point, vec3 aabbmin, vec3 aabbmax) 
+{
+	vec3 d; 
+    d.x = max(0.0f, max(aabbmin.x - point.x, point.x - aabbmax.x));
+    d.y = max(0.0f, max(aabbmin.y - point.y, point.y - aabbmax.y));
+    d.z = max(0.0f, max(aabbmin.z - point.z, point.z - aabbmax.z));
+
+    return dot(d, d);
+}
+
+bool aabb_intersect(int nodeId, Ray ray, out float distance)
 {
 	vec3 invDir = vec3(1.0f) / (ray.direction + EPSILON);
+	
 	vec3 tbot = invDir * (nodes[nodeId].min - ray.origin);
 	vec3 ttop = invDir * (nodes[nodeId].max - ray.origin);
 	vec3 tmin = min(ttop, tbot);
 	vec3 tmax = max(ttop, tbot);
 	float t0 = max(max(tmin.x, tmin.y), tmin.z);
 	float t1 = min(min(tmax.x, tmax.y), tmax.z);
-	return t1 > max(t0, 0.0);
+	distance = squared_aabb_distance(ray.origin, nodes[nodeId].min, nodes[nodeId].max);//Distance is set even if there is no intersection
+	return t1 > max(t0, 0.0f);
 }
 
 bool hit(in Ray ray, out HitInfo info)
 {
-	int stack[128];
+	int stack[64];
 	int stackPtr = 0;
 	bool result = false;
 	HitInfo tempInfo;
@@ -332,10 +403,12 @@ bool hit(in Ray ray, out HitInfo info)
 	stack[0] = rootId;
 	info.distance = viewBounds.y + 1.0f;
 	tempInfo.distance = info.distance + 1.0f;
+	
 	while(stackPtr >= 0)
 	{
 		int nodeId = stack[stackPtr];
-		if (!aabb_intersect(nodeId, ray))
+		float distanceSquared;
+		if (!aabb_intersect(nodeId, ray, distanceSquared) || distanceSquared > info.distance * info.distance)
 		{
 			stackPtr--;
 			continue;
@@ -343,9 +416,9 @@ bool hit(in Ray ray, out HitInfo info)
 		// Common case
 		if (nodes[nodeId].leftId != nodes[nodeId].rightId)
 		{
-			stack[stackPtr] = nodes[nodeId].leftId;
-			stackPtr++;
 			stack[stackPtr] = nodes[nodeId].rightId;
+			stackPtr++;
+			stack[stackPtr] = nodes[nodeId].leftId;
 			stackPtr++;
 		} else { // Node is leaf node and contains triangle
 			if (triangle_intersect(nodes[nodeId].rightId, ray, tempInfo) && tempInfo.distance < info.distance)
@@ -354,7 +427,6 @@ bool hit(in Ray ray, out HitInfo info)
 				result = true;
 			}
 		}
-		
 		stackPtr--;
 	}
 	
@@ -377,70 +449,107 @@ vec3 calculate_surface_normal(int triangleId, vec3 faceNormal, vec3 textureNorma
 	vec3 normalFromTexture = textureNormal * 2.0f - 1.0f;
 	
 	mat3 TBN = mat3(tangent, bitangent, faceNormal);
+	if (all(equal(textureNormal, vec3(0.0f))))
+	{
+		return faceNormal;
+	}
+	
 	vec3 normalInWorldSpace = normalize(TBN * normalFromTexture);
 	
 	return normalize(faceNormal + normalInWorldSpace);
 }
 
-vec3 fresnel_schlick(float cosTheta, vec3 F0) 
+float get_cosine_pdf(vec3 normal, vec3 direction)
 {
-    return F0 + (1.0f - F0) * pow(1.0f - cosTheta, 5.0f);
+	return max(0.0f, dot(normal, direction) * ONE_OVER_PI);
 }
 
-float ggx_distribution(float roughness, float NdotH) 
+vec3 get_cosine_direction(vec3 normal)
 {
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float NdotH2 = NdotH * NdotH;
-
-    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    return a2 / (PI * denom * denom);
+	vec3 a = (normal.x > 0.9f)
+		   ? vec3(0.0f, 1.0f, 0.0f)
+		   : vec3(1.0f, 0.0f, 0.0f);
+	vec3 v = cross(normal, a);
+	vec3 u = cross(normal, v);
+	
+	vec3 localDirection = random_cosine_direction();
+	localDirection = localDirection.x * u + localDirection.y * v + localDirection.z * normal;
+	return normalize(localDirection);
 }
 
-float geometry_schlick_ggx(float NdotV, float roughness) 
-{	
-    float r = (roughness + 1.0f);
-    float k = (r * r) / 8.0f;
-
-    float denom = NdotV * (1.0f - k) + k;
-    return NdotV / denom;
+float get_triangle_area(int triangleId)
+{
+	vec3 a = positionsWithMaterial[indexes[triangleId + 0]].xyz;
+	vec3 b = positionsWithMaterial[indexes[triangleId + 1]].xyz;
+	vec3 c = positionsWithMaterial[indexes[triangleId + 2]].xyz;
+	
+	vec3 u = b - a;
+	vec3 v = c - a;
+	
+    return 0.5f * length(cross(u, v));
 }
 
-float geometry_smith(float NdotV, float NdotL, float roughness)
+float get_triangle_pdf(int triangleId, vec3 origin, vec3 direction)
 {
-    float ggx2 = geometry_schlick_ggx(NdotV, roughness);
-    float ggx1 = geometry_schlick_ggx(NdotL, roughness);
+	HitInfo info;
+	Ray ray;
+	ray.origin = origin;
+	ray.direction = direction;
+	if (!triangle_intersect(triangleId, ray, info))
+	{
+		return EPSILON; 
+	}
+	
+	float cosine = abs(dot(direction, info.normal));
 
-    return ggx1 * ggx2;
+	return (info.distance * info.distance) / (cosine * get_triangle_area(triangleId));
 }
 
-vec3 calculate_reflection(vec2 seed, Ray ray, vec3 normal, vec3 albedo, float metalness, float roughness) 
+vec3 get_random_in_triangle(int triangleId, vec3 origin)
 {
-    vec3 F0 = mix(vec3(0.04f), albedo, metalness);
-	// TODO: hitt light??
-    vec3 L = rand_in_unit_hemisphere(normal, seed, roughness);
-    vec3 V = ray.direction;
-    vec3 H = normalize(V + L);
-	ray.direction = L;
+	vec3 a = positionsWithMaterial[indexes[triangleId + 0]].xyz;
+	vec3 b = positionsWithMaterial[indexes[triangleId + 1]].xyz;
+	vec3 c = positionsWithMaterial[indexes[triangleId + 2]].xyz;
+	
+	vec3 u = b - a;
+	vec3 v = c - a;
+	
+	float r1 = rand();
+	float r2 = min(1.0f - r1, rand());
+	vec3 p = a + u * r1 + v * r2;
+	
+	return p - origin;
+}
 
-    float NdotL = max(dot(normal, L), 0.0);
-    float NdotV = max(dot(normal, V), 0.0);
-    float NdotH = max(dot(normal, H), 0.0);
-    float HdotV = max(dot(H, V), 0.0);
+float get_lights_pdf(vec3 origin, vec3 direction)
+{
+	float weight = 1.0f / float(emissionTrianglesCount);
+	float sum = 0.0f;
+	
+	for (int triangleId = 0; triangleId < emissionTrianglesCount; ++triangleId)
+	{
+		sum += weight * get_triangle_pdf(triangleId, origin, direction);
+	}
+	return sum;
+}
 
-    vec3 F = fresnel_schlick(HdotV, F0);
-    float D = ggx_distribution(roughness, NdotH);
-    float G = geometry_smith(NdotV, NdotL, roughness);
+vec3 get_random_light(vec3 origin)
+{
+	int triangleId = int(rand() * float(emissionTrianglesCount - 1));
+	
+	return get_random_in_triangle(triangleId, origin);
+}
 
-    vec3 nominator = F * D * G;
-    float denominator = 4.0f * NdotV * NdotL + 0.0001f; 
-    vec3 specular = nominator / denominator;
+vec3 get_pdf_direction(vec3 origin, vec3 normal)
+{
+	if (rand() > 0.5f)
+	{
+		return get_cosine_direction(normal);
+	}
+	return get_random_light(origin);
+}
 
-    vec3 kS = F;
-    vec3 kD = vec3(1.0f) - kS;
-    kD *= 1.0f - metalness; 
-
-    vec3 diffuse = (albedo / PI) * kD;
-
-    return (diffuse + specular) * NdotL;
+float get_pdf_value(vec3 origin, vec3 direction, vec3 normal)
+{
+	return get_lights_pdf(origin, direction) * 0.5f + get_cosine_pdf(normal, direction) * 0.5f;
 }

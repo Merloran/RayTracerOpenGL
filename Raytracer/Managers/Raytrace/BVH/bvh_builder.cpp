@@ -11,7 +11,15 @@ Void BVHBuilder::create_tree(const std::vector<glm::vec4>& positions, const std:
 		return;
 	}
     const Int32 triangleCount = indexes.size() / 3;
+
     SPDLOG_INFO("Build tree of {} triangles", triangleCount);
+    if (load_tree("scene.bvh"))
+    {
+        SPDLOG_INFO("BVH loaded from file");
+        rootId = triangleCount;
+        return;
+    }
+
     const Int32 hierarchySize = triangleCount * 2 - 1;
     std::vector<Int32> objects;
     objects.reserve(triangleCount);
@@ -81,7 +89,7 @@ Int32 BVHBuilder::create_hierarchy(const std::vector<Int32> &srcObjects, Int32 b
     const BVHNode& right = hierarchy[node.rightId];
     node.min = glm::min(left.min, right.min);
     node.max = glm::max(left.max, right.max);
-    pad(node);
+
     SPDLOG_INFO("Progress: {0:.2f}%", Float32(hierarchy.size()) / Float32(hierarchy.capacity()) * 100.0f);
     return nodeId;
 }
@@ -92,6 +100,26 @@ Void BVHBuilder::save_tree(std::string path)
     file.open(path, std::ios::binary);
     file.write(reinterpret_cast<const Char*>(hierarchy.data()), hierarchy.size() * sizeof(BVHNode));
     file.close();
+}
+
+Bool BVHBuilder::load_tree(std::string path)
+{
+    std::ifstream file;
+    file.open(path, std::ios::binary | std::ios::ate);
+    if (!file)
+    {
+        SPDLOG_WARN("Failed to open {}", path);
+        return false;
+    }
+
+    Int32 size = file.tellg();
+
+    file.seekg(0, std::ios::beg);
+    hierarchy.resize(size / sizeof(BVHNode));
+
+    file.read(reinterpret_cast<Char*>(hierarchy.data()), size);
+    file.close();
+    return true;
 }
 
 Void BVHBuilder::min(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c, glm::vec3& result)
@@ -108,7 +136,7 @@ Void BVHBuilder::max(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c,
 
 Void BVHBuilder::pad(BVHNode& node)
 {
-    const Float32 delta = 0.0001f;
+    const Float32 delta = 0.0002f;
     glm::vec3 size = node.max - node.min;
     for (Int32 i = 0; i < 3; ++i)
     {

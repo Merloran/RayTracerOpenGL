@@ -1,5 +1,6 @@
 ﻿#include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <iostream>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
@@ -10,6 +11,8 @@
 #include "Managers/Render/Common/shader.hpp"
 #include "Managers/Resource/Common/model.hpp"
 #include "Managers/Raytrace/raytrace_manager.hpp"
+#include "Managers/Resource/Common/texture.hpp"
+#include "Managers/Resource/Common/handle.hpp"
 
 
 Void camera_gui(Camera& camera)
@@ -39,14 +42,26 @@ Void camera_gui(Camera& camera)
 	
 }
 
+Bool isRayTraced = false;
 Void info_gui()
 {
 	if (ImGui::Begin("Render info"))
 	{
 		SRaytraceManager& raytraceManager = SRaytraceManager::get();
-		ImGui::SliderInt("Bounces Count", &raytraceManager.maxBouncesCount, 1, 32);
+		Int32 bounces = raytraceManager.maxBouncesCount;
+		ImGui::SliderInt("Bounces Count", &raytraceManager.maxBouncesCount, 0, 32);
+		if(bounces != raytraceManager.maxBouncesCount) // quick way to refresh rendering
+		{
+			raytraceManager.imageSize = glm::ivec2(1.0f);
+		}
 		ImGui::Text("FPS: %.2f, %.2fms", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
 		ImGui::Text("Accumulated frames: %d", raytraceManager.get_frame_count());
+		ImGui::Checkbox("Ray tracer", &isRayTraced);
+		if (ImGui::Button("Reload Shaders"))
+		{
+			raytraceManager.reload_shaders();
+			raytraceManager.imageSize = glm::ivec2(1.0f);
+		}
 	}
 	ImGui::End();
 }
@@ -63,10 +78,16 @@ Int32 main()
 	renderManager.startup();
 	resourceManager.startup();
 	// resourceManager.load_gltf_asset(resourceManager.ASSETS_PATH + "Cube/Cube.gltf");
-	// resourceManager.generate_opengl_textures();
 
-	resourceManager.load_gltf_asset("Resources/Assets/Main.1_Sponza/NewSponza_Main_glTF_002.gltf");
+	//std::string asset;
+	//std::cout << "SponzaLighted/SponzaLighted.gltf \nCornellBox/CornellBox.gltf \nCornellBoxBunny/CornellBoxBunny.gltf\n";
+	//std::cout << "Podaj wzgledna sciezke do pliku: ";
+	//std::cin >> asset;
+	//CornellBoxMonkey
+	resourceManager.load_gltf_asset(resourceManager.ASSETS_PATH + "CornellBoxMonkey/CornellBoxMonkey.gltf");
+	resourceManager.load_texture(resourceManager.TEXTURES_PATH + "EnvironmentMap.hdr", "EnvironmentMap", ETextureType::HDR);
 	resourceManager.generate_opengl_resources();
+	//resourceManager.clear_unused_memory();
 	raytraceManager.startup();
 	Shader diffuse;
 	Camera camera;
@@ -97,19 +118,22 @@ Int32 main()
 
 		displayManager.make_context_current();
 
-		raytraceManager.update(camera, deltaTimeMs);
+		if (isRayTraced)
+		{
+			raytraceManager.update(camera, deltaTimeMs);
+		} else {
+			diffuse.use();
+			glm::mat4 view = camera.get_view();
+			glm::mat4 proj = camera.get_projection(displayManager.get_aspect_ratio());
+			glm::mat4 model = glm::mat4(1.0f);
+			diffuse.set_mat4("viewProjection", proj * view);
+			diffuse.set_mat4("model", model);
 
-		// diffuse.use();
-		// glm::mat4 view = camera.get_view();
-		// glm::mat4 proj = camera.get_projection(displayManager.get_aspect_ratio());
-		// glm::mat4 model = glm::mat4(1.0f);
-		// diffuse.set_mat4("viewProjection", proj * view);
-		// diffuse.set_mat4("model", model);
-		//
-		// for (const Model& asset : resourceManager.get_models())
-		// {
-		// 	renderManager.draw_model(asset, diffuse);
-		// }
+			for (const Model& asset : resourceManager.get_models())
+			{
+				renderManager.draw_model(asset, diffuse);
+			}
+		}
 
 
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

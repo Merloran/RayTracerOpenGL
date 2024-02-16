@@ -25,7 +25,7 @@ Void SResourceManager::startup()
 	defaultMaterial.metalness		 = load_texture(TEXTURES_PATH + "Default/Metalness.png", "DefaultMetalness", ETextureType::Metalness);
 	defaultMaterial.ambientOcclusion = load_texture(TEXTURES_PATH + "Default/AmbientOcclusion.png", "DefaultAmbientOcclusion", ETextureType::AmbientOcclusion);
 	create_material(defaultMaterial, defaultMaterial.name);
-	load_gltf_asset(ASSETS_PATH + "Default/Default.gltf");
+	//load_gltf_asset(ASSETS_PATH + "Default/Default.gltf");
 }
 
 SResourceManager& SResourceManager::get()
@@ -68,41 +68,69 @@ Void SResourceManager::generate_opengl_texture(Texture& texture)
 {
 	glGenTextures(1, &texture.gpuId);
 	glBindTexture(GL_TEXTURE_2D, texture.gpuId);
+	UInt32 internalFormat, format, type;
 
-	if (texture.channels == 3)
+	switch (texture.channels)
 	{
-		glTexImage2D(GL_TEXTURE_2D,
-					 0,
-					 GL_RGB,
-					 texture.size.x,
-					 texture.size.y,
-					 0,
-					 GL_RGB,
-					 GL_UNSIGNED_BYTE,
-					 texture.data);
+		case 3:
+		{
+			if (texture.type == ETextureType::HDR)
+			{
+				internalFormat = GL_RGB16F;
+				type = GL_FLOAT;
+			} else {
+				internalFormat = GL_RGB;
+				type = GL_UNSIGNED_BYTE;
+			}
+			format = GL_RGB;
+			break;
+		}
+		case 4:
+		{
+			if (texture.type == ETextureType::HDR)
+			{
+				internalFormat = GL_RGBA16F;
+				type = GL_FLOAT;
+			} else {
+				internalFormat = GL_RGBA;
+				type = GL_UNSIGNED_BYTE;
+			}
+			format = GL_RGBA;
+			break;
+		}
+		default:
+		{
+			SPDLOG_WARN("Not supported count of channels: {}", texture.channels);
+			glDeleteTextures(1, &texture.gpuId);
+			glBindTexture(GL_TEXTURE_2D, 0);
+			return;
+		}
 	}
-	else if (texture.channels == 4)
+
+	glTexImage2D(GL_TEXTURE_2D,
+				 0,
+				 internalFormat,
+				 texture.size.x,
+				 texture.size.y,
+				 0,
+				 format,
+				 type,
+				 texture.data);
+
+	if (texture.type == ETextureType::HDR)
 	{
-		glTexImage2D(GL_TEXTURE_2D,
-					 0,
-					 GL_RGBA,
-					 texture.size.x,
-					 texture.size.y,
-					 0,
-					 GL_RGBA,
-					 GL_UNSIGNED_BYTE,
-					 texture.data);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	} else {
-		SPDLOG_WARN("Not supported count of channels: {}", texture.channels);
-		glDeleteTextures(1, &texture.gpuId);
-		glBindTexture(GL_TEXTURE_2D, 0);
-		return;
+		glGenerateMipmap(GL_TEXTURE_2D);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	}
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	texture.bindlessId = glGetTextureHandleARB(texture.gpuId);
 	if (texture.bindlessId == 0)
 	{
@@ -423,6 +451,11 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 	return materialHandle;
 }
 
+Handle<Texture> SResourceManager::load_texture(const std::string& filePath, const std::string& textureName, ETextureType type)
+{
+	return load_texture(std::filesystem::path(filePath), textureName, type);
+}
+
 Handle<Texture> SResourceManager::load_texture(const std::filesystem::path& filePath, const std::string& textureName, ETextureType type)
 {
 	if (nameToIdTextures.find(textureName) != nameToIdTextures.end())
@@ -436,8 +469,16 @@ Handle<Texture> SResourceManager::load_texture(const std::filesystem::path& file
 	Int64 textureId = textures.size() - 1;
 
 	Texture& texture = textures[textureId];
-	texture.data = stbi_load(filePath.string().c_str(), &texture.size.x, &texture.size.y, &texture.channels, 0);
+
+	if (type == ETextureType::HDR)
+	{
+		texture.data = reinterpret_cast<UInt8*>(stbi_loadf(filePath.string().c_str(), &texture.size.x, &texture.size.y, &texture.channels, 0));
+	} else {
+		texture.data = stbi_load(filePath.string().c_str(), &texture.size.x, &texture.size.y, &texture.channels, 0);
+	}
+
 	texture.type = type;
+
 	if (!texture.data)
 	{
 		SPDLOG_ERROR("Texture {} loading failed.", filePath.string());
@@ -616,6 +657,28 @@ const std::vector<Material>& SResourceManager::get_materials() const
 const std::vector<Texture>& SResourceManager::get_textures() const
 {
 	return textures;
+}
+
+Void SResourceManager::clear_unused_memory()
+{
+	SPDLOG_INFO("Free unused memory.");
+	for (Int32 i = 0; i < textures.size(); ++i)
+	{
+		Texture& texture = textures[i];
+		stbi_image_free(texture.data);
+		texture.type = ETextureType::None;
+	}
+	for (Mesh& mesh : meshes)
+	{
+		if (mesh.gpuIds[0])
+		{
+			glDeleteVertexArrays(1, &mesh.gpuIds[0]);
+			mesh.gpuIds[0] = 0;
+			glDeleteBuffers(2, &mesh.gpuIds[1]);
+			mesh.gpuIds[1] = 0;
+			mesh.gpuIds[2] = 0;
+		}
+	}
 }
 
 Void SResourceManager::shutdown()

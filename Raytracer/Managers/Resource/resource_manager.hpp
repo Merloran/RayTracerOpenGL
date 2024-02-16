@@ -17,7 +17,7 @@ struct Texture;
 struct Material;
 struct Model;
 struct Mesh;
-enum class ETextureType : Int8;
+enum class ETextureType : Int16;
 
 class SResourceManager
 {
@@ -43,6 +43,7 @@ public:
 	Handle<Model>    load_model(const std::filesystem::path & filePath, tinygltf::Node& gltfNode, tinygltf::Model& gltfModel);
 	Handle<Mesh>     load_mesh(const std::string& meshName, tinygltf::Primitive& primitive, tinygltf::Model& gltfModel);
 	Handle<Material> load_material(const std::filesystem::path& assetPath, tinygltf::Material& gltfMaterial, tinygltf::Model& gltfModel);
+	Handle<Texture>  load_texture(const std::string& filePath, const std::string& textureName, ETextureType type);
 	Handle<Texture>  load_texture(const std::filesystem::path& filePath, const std::string& textureName, ETextureType type);
 
 	Handle<Material> create_material(const Material& material, const std::string& name);
@@ -75,6 +76,7 @@ public:
 	[[nodiscard]]
 	const std::vector<Texture>  &get_textures()  const;
 
+	Void clear_unused_memory();
 	Void shutdown();
 
 protected:

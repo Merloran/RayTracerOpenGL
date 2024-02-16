@@ -11,6 +11,7 @@ public:
 private:
 	Int32 create_hierarchy(const std::vector<Int32>& srcObjects, Int32 begin, Int32 end);
 	Void save_tree(std::string path);
+	Bool load_tree(std::string path);
 	Void min(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c, glm::vec3& result);
 	Void max(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c, glm::vec3& result);
 	Void pad(BVHNode& node);

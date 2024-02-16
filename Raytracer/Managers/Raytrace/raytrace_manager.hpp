@@ -30,26 +30,28 @@ public:
 	[[nodiscard]]
 	glm::vec3 get_background_color() const;
 
+	Void reload_shaders();
 	Void shutdown();
 
 	Int32 maxBouncesCount;
+	glm::ivec2 imageSize;
 private:
 	SRaytraceManager() = default;
 	~SRaytraceManager() = default;
 	static constexpr glm::ivec2 WORKGROUP_SIZE{ 16, 16 };
 
-	Shader rayGeneration, triangle, screen;
+	Shader rayGeneration, rayTrace, screen;
 	BVHBuilder bvh;
 	std::vector<glm::vec4> positionsWithMaterial;
 	std::vector<glm::vec4> normals;
 	std::vector<glm::vec2> uvs;
 	std::vector<UInt32> indexes;
+	std::vector<UInt32> emissionTriangles;
 	std::vector<UInt64> textures;
 	std::vector<GpuMaterial> materials;
 	glm::vec3 originPixel, pixelDeltaU, pixelDeltaV, backgroundColor;
-	glm::ivec2 imageSize;
 	Float32 renderTime;
-	UInt32 ssbo[7]; //Positions, Normals, Uvs, Indexes, TextureHandles, Materials, BVHNodes
+	UInt32 ssbo[8]; //Positions, Normals, Uvs, Indexes, TextureHandles, Materials, BVHNodes, EmissionTriangles
 	UInt32 screenTexture, directionTexture;
 	Int32 frameCount, trianglesCount;
 };
