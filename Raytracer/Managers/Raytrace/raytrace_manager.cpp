@@ -12,6 +12,7 @@
 #include "../Resource/Common/mesh.hpp"
 #include "../Resource/Common/texture.hpp"
 #include "BVH/bvh_node.hpp"
+#include "KDTree/kdtree_builder.hpp"
 
 SRaytraceManager& SRaytraceManager::get()
 {
@@ -47,6 +48,7 @@ Void SRaytraceManager::startup()
 		gpuMaterial.roughness = material.roughness.id;
 		gpuMaterial.metalness = material.metalness.id;
 		gpuMaterial.emission  = material.emission.id;
+		gpuMaterial.indexOfRefraction  = material.indexOfRefraction;
 	}
 
 	Int32 vertexesSize = 0;

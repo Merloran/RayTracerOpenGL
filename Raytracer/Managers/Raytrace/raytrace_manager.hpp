@@ -9,6 +9,7 @@ struct GpuMaterial
 	Int32 roughness;
 	Int32 metalness;
 	Int32 emission;
+	Float32 indexOfRefraction;
 };
 
 struct Camera;

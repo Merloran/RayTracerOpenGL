@@ -53,6 +53,7 @@ struct Material
 	int roughness;
 	int metalness;
 	int emission;
+	float indexOfRefraction;
 };
 
 layout(std430, binding = 0) readonly buffer Positions
@@ -120,6 +121,11 @@ vec3  rand_in_unit_sphere();
 vec3  rand_in_unit_hemisphere(vec3 normal);
 vec3  random_cosine_direction();
 
+vec3 calculate_emission_material(HitInfo info, vec3 emission);
+vec3 calculate_dielectric_material(inout Ray ray, HitInfo info, vec3 normal, vec3 albedo, float indexOfRefraction);
+vec3 calculate_metallic_material(inout Ray ray, HitInfo info, vec3 normal, vec3 albedo, float metalness);
+vec3 calculate_lambertian_material(inout Ray ray, HitInfo info, vec3 normal, vec3 albedo);
+
 vec2  sample_sphere(vec3 direction);
 bool  triangle_intersect(int triangleId, in Ray ray, out HitInfo info);
 float squared_aabb_distance(vec3 point, vec3 aabbmin, vec3 aabbmax);
@@ -128,6 +134,9 @@ void  get_triangle(int triangleId, out Triangle triangle);
 vec4  get_color_from_texture(int textureId, vec2 uv);
 bool  hit(in Ray ray, out HitInfo info);
 vec3  calculate_surface_normal(int triangleId, vec3 faceNormal, vec3 textureNormal);
+
+float reflectance(float cosine, float refractionRatio);
+
 float get_cosine_pdf(vec3 normal, vec3 direction);
 vec3  get_cosine_direction(vec3 normal);
 
@@ -173,42 +182,34 @@ void main()
 		}
 		
 		Material material  = materials[info.materialId];
+		vec3 emission 	   = get_color_from_texture(material.emission, info.uv).rgb;
+		
+		if (any(greaterThan(emission, vec3(0.0f))))
+		{
+			color *= calculate_emission_material(info, emission);
+            break;
+		}
+		
 		vec3 albedo 	   = get_color_from_texture(material.albedo, info.uv).rgb;
 		vec3 textureNormal = get_color_from_texture(material.normal, info.uv).rgb;
-		vec3 emission 	   = get_color_from_texture(material.emission, info.uv).rgb;
 		//NORMALS ARE GOOD!
 		vec3 normal        = calculate_surface_normal(info.triangleId, 
 													  info.normal, 
 													  textureNormal);
 		float metalness = get_color_from_texture(material.metalness, info.uv).b;
+		float indexOfRefraction = material.indexOfRefraction;
 		//float roughness = get_color_from_texture(material.roughness, info.uv).g;
-		if (emission.x > 0.0f) // Material is light
+		if (indexOfRefraction != 1.0f)
 		{
-			if (!info.frontFace)
-			{
-				color *= 0.0f;
-			} else {
-				color *= emission * 15.0f;
-			}
-            break;
+			color *= calculate_dielectric_material(ray, info, normal, albedo, indexOfRefraction);
+		}
+		else if (metalness > 0.0f)
+		{
+			color *= calculate_metallic_material(ray, info, normal, albedo, metalness);
+		} else {
+			color *= calculate_lambertian_material(ray, info, normal, albedo);
 		}
 		
-		ray.origin = info.point;
-		if (metalness > 0.0f) // Material is metal
-		{
-			vec3 reflectedRay = reflect(ray.direction, normal);
-			vec3 randomRay = rand_in_unit_sphere();
-			ray.direction = normalize(reflectedRay + randomRay * (1.0f - metalness));
-			color *= albedo;
-			continue;
-		}
-		
-		ray.direction = normalize(get_pdf_direction(ray.origin, normal));
-		// Material is lambertian
-		float scatteringPDF = get_cosine_pdf(normal, ray.direction);
-		float pdfValue = get_pdf_value(ray.origin, ray.direction, normal);
-		
-		color *= albedo * scatteringPDF / pdfValue;
     }
 	
 	//if (any(isnan(color)) || any(isinf(color)))
@@ -218,6 +219,56 @@ void main()
     vec3 currentPixel = imageLoad(accumulated, gid).rgb;
 	vec4 result = vec4(currentPixel + color, 1.0f);
     imageStore(accumulated, gid, result);
+}
+
+vec3 calculate_emission_material(HitInfo info, vec3 emission)
+{
+	if (!info.frontFace)
+	{
+		return vec3(0.0f);
+	} else {
+		return emission * 15.0f; // Emission strength is constant
+	}
+}
+
+vec3 calculate_dielectric_material(inout Ray ray, HitInfo info, vec3 normal, vec3 albedo, float indexOfRefraction)
+{
+	float refractionRatio = info.frontFace ? (1.0f / indexOfRefraction) : indexOfRefraction;
+
+	float cosTheta = min(dot(-ray.direction, normal), 1.0f);
+	float sinTheta = sqrt(1.0f - cosTheta * cosTheta);
+
+	bool cannotRefract = refractionRatio * sinTheta > 1.0f;
+
+	ray.origin = info.point;
+	if (cannotRefract || reflectance(cosTheta, refractionRatio) > rand())
+	{
+		ray.direction = reflect(ray.direction, normal);
+	} else {
+		ray.direction = refract(ray.direction, normal, refractionRatio);
+	}
+
+	return albedo; //vec3(1.0f)
+}
+
+vec3 calculate_metallic_material(inout Ray ray, HitInfo info, vec3 normal, vec3 albedo, float metalness)
+{
+	ray.origin = info.point;
+	vec3 reflectedRay = reflect(ray.direction, normal);
+	vec3 randomRay = rand_in_unit_sphere();
+	ray.direction = normalize(reflectedRay + randomRay * (1.0f - metalness));
+	return albedo;
+}
+
+vec3 calculate_lambertian_material(inout Ray ray, HitInfo info, vec3 normal, vec3 albedo)
+{
+	ray.origin = info.point;
+	ray.direction = normalize(get_pdf_direction(ray.origin, normal));
+	
+	float scatteringPDF = get_cosine_pdf(normal, ray.direction);
+	float pdfValue = get_pdf_value(ray.origin, ray.direction, normal);
+			
+	return albedo * scatteringPDF / pdfValue;
 }
 
 float rand() 
@@ -235,9 +286,11 @@ vec3 rand_in_unit_sphere()
 {
 	vec3 randomVector;
 	vec2 bounds = { -1.0f, 1.0f };
+	
 	randomVector.x = rand(bounds);
 	randomVector.y = rand(bounds);
 	randomVector.z = rand(bounds);
+
 	return normalize(randomVector);
 }
 
@@ -454,6 +507,14 @@ vec3 calculate_surface_normal(int triangleId, vec3 faceNormal, vec3 textureNorma
 	vec3 normalInWorldSpace = normalize(TBN * normalFromTexture);
 	
 	return normalize(faceNormal + normalInWorldSpace);
+}
+
+float reflectance(float cosine, float refractionRatio)
+{
+	// Use Schlick's approximation for reflectance.
+	float r0 = (1.0f - refractionRatio) / (1.0f + refractionRatio);
+	r0 = r0 * r0;
+	return r0 + (1.0f - r0) * pow((1.0f - cosine), 5.0f);
 }
 
 float get_cosine_pdf(vec3 normal, vec3 direction)

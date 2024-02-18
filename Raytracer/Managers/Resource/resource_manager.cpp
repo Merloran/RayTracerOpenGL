@@ -444,6 +444,22 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 		material.emission = load_texture(assetPath / image.uri, textureName.stem().string(), ETextureType::Emission);
 	}
 
+	auto iterator = gltfMaterial.extensions.find("KHR_materials_ior");
+	Bool isRefractionSet = false;
+	if (iterator != gltfMaterial.extensions.end())
+	{
+		auto indexOfRefractionValue = iterator->second.Get("ior");
+		if (indexOfRefractionValue.IsNumber())
+		{
+			material.indexOfRefraction = indexOfRefractionValue.GetNumberAsDouble();
+			isRefractionSet = true;
+		}
+	}
+	if (!isRefractionSet)
+	{
+		material.indexOfRefraction = 1.0f;
+	}
+
 	const Handle<Material> materialHandle{ Int32(materialId) };
 	nameToIdMaterials[gltfMaterial.name] = materialHandle;
 	material.name = gltfMaterial.name;

@@ -17,5 +17,6 @@ struct Material
 	Handle<Texture> emission		 = Handle<Texture>::sNone;
 	Handle<Texture> height			 = Handle<Texture>::sNone;
 	Handle<Texture> opacity			 = Handle<Texture>::sNone;
+	Float32	indexOfRefraction		 = 0.0f;
 	std::string name;
 };

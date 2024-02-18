@@ -92,7 +92,7 @@ Int32 main()
 	Shader diffuse;
 	Camera camera;
 	diffuse.create("Resources/Shaders/Vertex.vert", "Resources/Shaders/Fragment.frag");
-	camera.initialize(glm::vec3(0.0f, 0.0f, 5.0f));
+	camera.initialize(glm::vec3(5.0f, 2.0f, 0.0f));
 
 	Float32 lastFrame = 0.0f;
 	while (!displayManager.should_window_close())

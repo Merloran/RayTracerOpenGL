@@ -178,6 +178,7 @@
   <ItemGroup>
     <ClCompile Include="Managers\Input\input_manager.cpp" />
     <ClCompile Include="Managers\Raytrace\BVH\bvh_builder.cpp" />
+    <ClCompile Include="Managers\Raytrace\KDTree\kdtree_builder.cpp" />
     <ClCompile Include="Managers\Raytrace\raytrace_manager.cpp" />
     <ClCompile Include="Managers\Render\Common\camera.cpp" />
     <ClCompile Include="Core\pch.cpp">
@@ -198,6 +199,9 @@
     <ClInclude Include="Managers\Input\input_manager.hpp" />
     <ClInclude Include="Managers\Raytrace\BVH\bvh_builder.hpp" />
     <ClInclude Include="Managers\Raytrace\BVH\bvh_node.hpp" />
+    <ClInclude Include="Managers\Raytrace\Common\photon.hpp" />
+    <ClInclude Include="Managers\Raytrace\KDTree\kdtree_builder.hpp" />
+    <ClInclude Include="Managers\Raytrace\KDTree\kdtree_node.hpp" />
     <ClInclude Include="Managers\Raytrace\raytrace_manager.hpp" />
     <ClInclude Include="Managers\Render\Common\camera.hpp" />
     <ClInclude Include="Core\pch.hpp" />
