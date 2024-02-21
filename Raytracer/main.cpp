@@ -48,11 +48,13 @@ Void info_gui()
 	if (ImGui::Begin("Render info"))
 	{
 		SRaytraceManager& raytraceManager = SRaytraceManager::get();
+		SResourceManager& resourceManager = SResourceManager::get();
 		Int32 bounces = raytraceManager.maxBouncesCount;
+		ImGui::DragInt("Frame Limit", &raytraceManager.frameLimit, 1, 0, 8192);
 		ImGui::SliderInt("Bounces Count", &raytraceManager.maxBouncesCount, 0, 32);
 		if(bounces != raytraceManager.maxBouncesCount) // quick way to refresh rendering
 		{
-			raytraceManager.imageSize = glm::ivec2(1.0f);
+			raytraceManager.refresh();
 		}
 		ImGui::Text("FPS: %.2f, %.2fms", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
 		ImGui::Text("Accumulated frames: %d", raytraceManager.get_frame_count());
@@ -60,7 +62,11 @@ Void info_gui()
 		if (ImGui::Button("Reload Shaders"))
 		{
 			raytraceManager.reload_shaders();
-			raytraceManager.imageSize = glm::ivec2(1.0f);
+			raytraceManager.refresh();
+		}
+		if (ImGui::Button("Save image to file"))
+		{
+			resourceManager.save_opengl_texture(raytraceManager.get_screen_texture());
 		}
 	}
 	ImGui::End();
@@ -84,7 +90,7 @@ Int32 main()
 	//std::cout << "Podaj wzgledna sciezke do pliku: ";
 	//std::cin >> asset;
 	//CornellBoxMonkey
-	resourceManager.load_gltf_asset(resourceManager.ASSETS_PATH + "CornellBoxMonkey/CornellBoxMonkey.gltf");
+	resourceManager.load_gltf_asset(resourceManager.ASSETS_PATH + "CornellBoxBunny/CornellBoxBunny.gltf");
 	resourceManager.load_texture(resourceManager.TEXTURES_PATH + "EnvironmentMap.hdr", "EnvironmentMap", ETextureType::HDR);
 	resourceManager.generate_opengl_resources();
 	//resourceManager.clear_unused_memory();

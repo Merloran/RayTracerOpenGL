@@ -4,6 +4,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define TINYGLTF_NOEXCEPTION
 #include "resource_manager.hpp"
+#include "../Raytrace/raytrace_manager.hpp"
 
 #include "Common/handle.hpp"
 #include "Common/model.hpp"
@@ -219,6 +220,70 @@ Void SResourceManager::generate_opengl_resources()
 {
 	generate_opengl_textures();
 	generate_opengl_meshes();
+}
+
+Void SResourceManager::save_opengl_texture(const Texture& texture)
+{
+	glBindTexture(GL_TEXTURE_2D, texture.gpuId);
+
+	std::vector<Float32> tempData;
+	std::vector<UInt8> data;
+	tempData.resize(texture.size.x * texture.size.y * texture.channels);
+
+	GLenum format;
+	switch (texture.channels)
+	{
+		case 4:
+		{
+			format = GL_RGBA;
+			break;
+		}
+		case 3:
+		{
+			format = GL_RGB;
+			break;
+		}
+		default:
+		{
+			SPDLOG_ERROR("Not supported channels count: {}", texture.channels);
+			return;
+		}
+	}
+	glGetTexImage(GL_TEXTURE_2D, 0, format, GL_FLOAT, tempData.data());
+
+	SRaytraceManager& raytraceManager = SRaytraceManager::get();
+	data.reserve(tempData.size());
+	const Float32 invertedFrameCount = 1.0f / Float32(raytraceManager.get_frame_count());
+	for(Int32 i = 0; i < tempData.size(); i += 4)
+	{
+		glm::ivec3 pixel;
+		pixel.x = static_cast<UInt8>(
+				  glm::clamp(glm::sqrt(tempData[i] * invertedFrameCount), 0.0f, 0.999f) 
+				  * 256.0f);
+		pixel.y = static_cast<UInt8>(
+				  glm::clamp(glm::sqrt(tempData[i + 1] * invertedFrameCount), 0.0f, 0.999f) 
+				  * 256.0f);
+		pixel.z = static_cast<UInt8>(
+				  glm::clamp(glm::sqrt(tempData[i + 2] * invertedFrameCount), 0.0f, 0.999f) 
+				  * 256.0f);
+
+		data.emplace_back(pixel.x);
+		data.emplace_back(pixel.y);
+		data.emplace_back(pixel.z);
+		data.emplace_back(255); // Alpha
+	}
+	tempData.clear();
+	stbi_flip_vertically_on_write(true);
+	Int32 result = stbi_write_png(texture.name.c_str(), texture.size.x, texture.size.y,
+								texture.channels, data.data(), texture.size.x * texture.channels);
+
+	if (result == 0)
+	{
+		SPDLOG_ERROR("Failed to save texture: {}", texture.name);
+	}
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+	data.clear();
 }
 
 Handle<Model> SResourceManager::load_model(const std::filesystem::path &filePath, tinygltf::Node &gltfNode, tinygltf::Model &gltfModel)
@@ -448,7 +513,7 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 	Bool isRefractionSet = false;
 	if (iterator != gltfMaterial.extensions.end())
 	{
-		auto indexOfRefractionValue = iterator->second.Get("ior");
+		const tinygltf::Value &indexOfRefractionValue = iterator->second.Get("ior");
 		if (indexOfRefractionValue.IsNumber())
 		{
 			material.indexOfRefraction = indexOfRefractionValue.GetNumberAsDouble();
@@ -457,7 +522,7 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 	}
 	if (!isRefractionSet)
 	{
-		material.indexOfRefraction = 1.0f;
+		material.indexOfRefraction = 10.0f;
 	}
 
 	const Handle<Material> materialHandle{ Int32(materialId) };

@@ -10,9 +10,7 @@
 #include "../Resource/Common/handle.hpp"
 #include "../Resource/Common/material.hpp"
 #include "../Resource/Common/mesh.hpp"
-#include "../Resource/Common/texture.hpp"
 #include "BVH/bvh_node.hpp"
-#include "KDTree/kdtree_builder.hpp"
 
 SRaytraceManager& SRaytraceManager::get()
 {
@@ -24,6 +22,8 @@ Void SRaytraceManager::startup()
 {
 	SPDLOG_INFO("Raytrace Manager startup.");
 	SResourceManager& resourceManager = SResourceManager::get();
+	screenTexture.name = "Result.png";
+	screenTexture.channels = 4;
 	rayGeneration.create("Resources/Shaders/RayGeneration.comp");
 	rayTrace.create("Resources/Shaders/RayTrace.comp");
 	screen.create("Resources/Shaders/Screen.vert", "Resources/Shaders/Screen.frag");
@@ -201,16 +201,18 @@ Void SRaytraceManager::update(Camera &camera, Float32 deltaTime)
 	const glm::ivec2& size = displayManager.get_window_size();
 
 	renderTime += deltaTime;
-	const Bool hasWindowResized = imageSize != size;
+	const Bool hasWindowResized = screenTexture.size != size || shouldRefresh;
 	const Bool hasCameraChanged = camera.has_changed();
 
 	if (hasWindowResized)
 	{
-		imageSize = size;
-		resize_opengl_texture(screenTexture, imageSize);
-		resize_opengl_texture(directionTexture, imageSize);
-		glBindImageTexture(0, directionTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-		glBindImageTexture(1, screenTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		shouldRefresh = false;
+		screenTexture.size = size;
+		directionTexture.size = size;
+		resize_opengl_texture(screenTexture);
+		resize_opengl_texture(directionTexture);
+		glBindImageTexture(0, directionTexture.gpuId, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		glBindImageTexture(1, screenTexture.gpuId, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 	}
 
 	if (hasWindowResized || hasCameraChanged)
@@ -218,12 +220,28 @@ Void SRaytraceManager::update(Camera &camera, Float32 deltaTime)
 		generate_rays(camera);
 		renderTime = 0.0f;
 	}
+
+	if (frameLimit == 0 || frameCount < frameLimit)
+	{
+		ray_trace(camera);
+		frameCount++;
+	}
+
+	screen.use();
+	screen.set_float("invFrameCount", Float32(1.0f / (frameCount - 1)));
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, screenTexture.gpuId);
+	renderManager.draw_quad();
+}
+
+Void SRaytraceManager::ray_trace(Camera& camera)
+{
 	rayTrace.use();
 	rayTrace.set_vec3("backgroundColor", backgroundColor);
 	rayTrace.set_vec3("cameraPosition", camera.get_position());
 	rayTrace.set_vec3("pixelDeltaU", pixelDeltaU);
 	rayTrace.set_vec3("pixelDeltaV", pixelDeltaV);
-	rayTrace.set_ivec2("imageSize", imageSize);
+	rayTrace.set_ivec2("imageSize", screenTexture.size);
 	rayTrace.set_vec2("viewBounds", camera.get_view_bounds());
 	rayTrace.set_float("time", renderTime);
 	rayTrace.set_int("frameCount", frameCount);
@@ -233,22 +251,15 @@ Void SRaytraceManager::update(Camera &camera, Float32 deltaTime)
 	rayTrace.set_int("rootId", bvh.rootId);
 	rayTrace.set_int("environmentMapId", textures.size() - 1);
 
-	const glm::ivec2 workGroupsCount = imageSize / WORKGROUP_SIZE;
+	const glm::ivec2 workGroupsCount = screenTexture.size / WORKGROUP_SIZE;
 	glDispatchCompute(workGroupsCount.x, workGroupsCount.y, 1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-	screen.use();
-	screen.set_float("invFrameCount", Float32(1.0f / frameCount));
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, screenTexture);
-	renderManager.draw_quad();
-	frameCount++;
 }
 
 Void SRaytraceManager::generate_rays(Camera& camera)
 {
 	const SDisplayManager& displayManager = SDisplayManager::get();
-	const glm::ivec2 workGroupsCount = imageSize / WORKGROUP_SIZE;
+	const glm::ivec2 workGroupsCount = directionTexture.size / WORKGROUP_SIZE;
 
 	camera.set_camera_changed(false);
 	frameCount = 1;
@@ -261,8 +272,8 @@ Void SRaytraceManager::generate_rays(Camera& camera)
 	const glm::vec3 viewportU = Float32(viewportSize.x) * camera.get_right();
 	const glm::vec3 viewportV = Float32(viewportSize.y) * camera.get_up();
 
-	pixelDeltaU = viewportU / Float32(imageSize.x);
-	pixelDeltaV = viewportV / Float32(imageSize.y);
+	pixelDeltaU = viewportU / Float32(directionTexture.size.x);
+	pixelDeltaV = viewportV / Float32(directionTexture.size.y);
 	originPixel = camera.get_position() + camera.get_forward() + (pixelDeltaU - viewportU + pixelDeltaV - viewportV) * 0.5f;
 
 	rayGeneration.use();
@@ -270,22 +281,22 @@ Void SRaytraceManager::generate_rays(Camera& camera)
 	rayGeneration.set_vec3("originPixel", originPixel);
 	rayGeneration.set_vec3("pixelDeltaU", pixelDeltaU);
 	rayGeneration.set_vec3("pixelDeltaV", pixelDeltaV);
-	rayGeneration.set_ivec2("imageSize", imageSize);
+	rayGeneration.set_ivec2("imageSize", directionTexture.size);
 	glDispatchCompute(workGroupsCount.x, workGroupsCount.y, 1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 }
 
-Void SRaytraceManager::resize_opengl_texture(UInt32& texture, const glm::ivec2& size)
+Void SRaytraceManager::resize_opengl_texture(Texture& texture)
 {
-	if (texture)
+	if (texture.gpuId)
 	{
-		glDeleteTextures(1, &texture);
+		glDeleteTextures(1, &texture.gpuId);
 	}
 	
-	glGenTextures(1, &texture);
+	glGenTextures(1, &texture.gpuId);
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, size.x, size.y, 0, GL_RGBA, GL_FLOAT, nullptr);
+	glBindTexture(GL_TEXTURE_2D, texture.gpuId);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, texture.size.x, texture.size.y, 0, GL_RGBA, GL_FLOAT, nullptr);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -303,6 +314,16 @@ glm::vec3 SRaytraceManager::get_background_color() const
 	return backgroundColor;
 }
 
+const Texture& SRaytraceManager::get_screen_texture() const
+{
+	return screenTexture;
+}
+
+Void SRaytraceManager::refresh()
+{
+	shouldRefresh = true;
+}
+
 Void SRaytraceManager::reload_shaders()
 {
 	rayTrace.reload();
@@ -313,7 +334,8 @@ Void SRaytraceManager::reload_shaders()
 Void SRaytraceManager::shutdown()
 {
 	glDeleteBuffers(8, ssbo);
-	glDeleteTextures(1, &screenTexture);
+	glDeleteTextures(1, &screenTexture.gpuId);
+	glDeleteTextures(1, &directionTexture.gpuId);
 	screen.shutdown();
 	rayTrace.shutdown();
 	rayGeneration.shutdown();
