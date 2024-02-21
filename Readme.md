@@ -25,7 +25,7 @@ Parameters:
 ![Cornell Box Suzanne blue side view](Results/CornellBoxMonkey_1500SPP_SideViewBlue.png)
 
 Parameters:
-- 1500 samples,
+- 1024 samples,
 - 8 bounces,
 - 980 triangles including 2 emissive triangles.
 
