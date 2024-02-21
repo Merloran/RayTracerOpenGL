@@ -32,6 +32,6 @@ Parameters:
 ![Cornell Box Stanford bunny pink side view](Results/CornellBoxStanfordBunny_1024SPP_SideViewPink.png)
 
 Parameters:
-- 1500 samples,
+- 1024 samples,
 - 8 bounces,
 - 69463 triangles including 2 emissive triangles.
