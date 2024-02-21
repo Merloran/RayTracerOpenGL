@@ -8,7 +8,7 @@ Parameters:
 - 8 bounces,
 - 36 triangles including 2 emissive triangles.
 
-![Cornell Box Suzanne](Results/CornellBoxMonkey_1024SPP.png
+![Cornell Box Suzanne](Results/CornellBoxMonkey_1024SPP.png)
 
 Parameters:
 - 1024 samples,
