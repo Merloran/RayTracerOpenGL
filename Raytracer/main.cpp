@@ -84,13 +84,13 @@ Int32 main()
 	renderManager.startup();
 	resourceManager.startup();
 	// resourceManager.load_gltf_asset(resourceManager.ASSETS_PATH + "Cube/Cube.gltf");
-
-	//std::string asset;
-	//std::cout << "SponzaLighted/SponzaLighted.gltf \nCornellBox/CornellBox.gltf \nCornellBoxBunny/CornellBoxBunny.gltf\n";
-	//std::cout << "Podaj wzgledna sciezke do pliku: ";
-	//std::cin >> asset;
+	
+	//CornellBoxBunny
+	//CornellBox
+	//SponzaLighted
 	//CornellBoxMonkey
-	resourceManager.load_gltf_asset(resourceManager.ASSETS_PATH + "CornellBoxBunny/CornellBoxBunny.gltf");
+	//Teapot
+	resourceManager.load_gltf_asset(resourceManager.ASSETS_PATH + "SponzaLighted/SponzaLighted.gltf");
 	resourceManager.load_texture(resourceManager.TEXTURES_PATH + "EnvironmentMap.hdr", "EnvironmentMap", ETextureType::HDR);
 	resourceManager.generate_opengl_resources();
 	//resourceManager.clear_unused_memory();

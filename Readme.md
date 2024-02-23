@@ -35,3 +35,17 @@ Parameters:
 - 1024 samples,
 - 8 bounces,
 - 69463 triangles including 2 emissive triangles.
+
+![Teapot](Results/Teapot_1024SPP.png)
+
+Parameters:
+- 1024 samples,
+- 8 bounces,
+- 126052 triangles including 2 emissive triangles.
+
+![Sponza](Results/Sponza_1024SPP.png)
+
+Parameters:
+- 1024 samples,
+- 16 bounces,
+- 262315 triangles including 48 emissive triangles.
