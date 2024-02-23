@@ -18,7 +18,6 @@ struct HitInfo
 {
 	vec3 point;
 	vec3 normal;
-	vec3 barycentric;
 	vec2 uv;
 	float distance;
 	int materialId;
@@ -192,13 +191,11 @@ void main()
 		
 		vec3 albedo 	   = get_color_from_texture(material.albedo, info.uv).rgb;
 		vec3 textureNormal = get_color_from_texture(material.normal, info.uv).rgb;
-		//NORMALS ARE GOOD!
 		vec3 normal        = calculate_surface_normal(info.triangleId, 
 													  info.normal, 
 													  textureNormal);
 		float metalness = get_color_from_texture(material.metalness, info.uv).b;
 		float indexOfRefraction = material.indexOfRefraction;
-		
 		
 		//float roughness = get_color_from_texture(material.roughness, info.uv).g;
 		if (indexOfRefraction != 10.0f)
@@ -412,7 +409,6 @@ bool triangle_intersect(int triangleId, in Ray ray, out HitInfo info)
 	}
 	info.distance = d;
 	info.point = ray.origin + ray.direction * d;
-	info.barycentric = vec3(w, u, v);
 	info.normal = triangle.normals[0] * w 
 				+ triangle.normals[1] * u 
 				+ triangle.normals[2] * v;
@@ -505,10 +501,10 @@ vec3 calculate_surface_normal(int triangleId, vec3 faceNormal, vec3 textureNorma
 		return faceNormal;
 	}
 	
-	mat3 TBN = mat3(tangent, bitangent, faceNormal);
+	mat3 TBN = mat3(normalize(tangent), normalize(bitangent), faceNormal);
 	vec3 normalInWorldSpace = normalize(TBN * normalFromTexture);
 	
-	return normalize(faceNormal + normalInWorldSpace);
+	return normalInWorldSpace;
 }
 
 float reflectance(float cosine, float refractionRatio)
