@@ -17,7 +17,7 @@ enum class ETextureType : Int16
 	RM				 = Roughness | Metalness,
 	RMAO			 = Roughness | Metalness | AmbientOcclusion,
 
-	TypesCount		 = 10,
+	TypesCount		 = 12,
 };
 
 struct Texture 

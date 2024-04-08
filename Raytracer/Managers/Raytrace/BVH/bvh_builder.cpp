@@ -183,7 +183,7 @@ Void BVHBuilder::max(const glm::vec3& a, const glm::vec3& b, const glm::vec3& c,
 
 Void BVHBuilder::pad(BVHNode& node)
 {
-    const Float32 delta = 0.0002f;
+    const Float32 delta = 0.001953125f; // DO NOT ASK XD
     glm::vec3 size = node.max - node.min;
     for (Int32 i = 0; i < 3; ++i)
     {

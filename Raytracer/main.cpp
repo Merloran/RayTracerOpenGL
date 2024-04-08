@@ -87,6 +87,7 @@ Int32 main()
 	
 	//CornellBoxBunny
 	//CornellBox
+	//CornellBoxSphere
 	//SponzaLighted
 	//CornellBoxMonkey
 	//Teapot
@@ -106,7 +107,6 @@ Int32 main()
 		Float32 currentFrame = glfwGetTime();
 		Float32 deltaTimeMs = currentFrame - lastFrame;
 		lastFrame = currentFrame;
-
 		displayManager.poll_events();
 		camera.catch_input(deltaTimeMs);
 		glm::vec3 color = raytraceManager.get_background_color();

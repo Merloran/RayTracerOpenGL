@@ -198,7 +198,7 @@ Void SRaytraceManager::update(Camera &camera, Float32 deltaTime)
 	SDisplayManager &displayManager = SDisplayManager::get();
 	SRenderManager &renderManager = SRenderManager::get();
 
-	const glm::ivec2& size = displayManager.get_window_size();
+	const glm::ivec2& size = displayManager.get_frame_buffer_size();
 
 	renderTime += deltaTime;
 	const Bool hasWindowResized = screenTexture.size != size || shouldRefresh;
@@ -251,7 +251,7 @@ Void SRaytraceManager::ray_trace(Camera& camera)
 	rayTrace.set_int("rootId", bvh.rootId);
 	rayTrace.set_int("environmentMapId", textures.size() - 1);
 
-	const glm::ivec2 workGroupsCount = screenTexture.size / WORKGROUP_SIZE;
+	const glm::ivec2 workGroupsCount = glm::ceil(glm::vec2(screenTexture.size) / glm::vec2(WORKGROUP_SIZE));
 	glDispatchCompute(workGroupsCount.x, workGroupsCount.y, 1);
 	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 }
@@ -259,7 +259,7 @@ Void SRaytraceManager::ray_trace(Camera& camera)
 Void SRaytraceManager::generate_rays(Camera& camera)
 {
 	const SDisplayManager& displayManager = SDisplayManager::get();
-	const glm::ivec2 workGroupsCount = directionTexture.size / WORKGROUP_SIZE;
+	const glm::ivec2 workGroupsCount = glm::ceil(glm::vec2(screenTexture.size) / glm::vec2(WORKGROUP_SIZE));
 
 	camera.set_camera_changed(false);
 	frameCount = 1;

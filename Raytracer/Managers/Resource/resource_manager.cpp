@@ -510,19 +510,13 @@ Handle<Material> SResourceManager::load_material(const std::filesystem::path& as
 	}
 
 	auto iterator = gltfMaterial.extensions.find("KHR_materials_ior");
-	Bool isRefractionSet = false;
 	if (iterator != gltfMaterial.extensions.end())
 	{
 		const tinygltf::Value &indexOfRefractionValue = iterator->second.Get("ior");
 		if (indexOfRefractionValue.IsNumber())
 		{
 			material.indexOfRefraction = indexOfRefractionValue.GetNumberAsDouble();
-			isRefractionSet = true;
 		}
-	}
-	if (!isRefractionSet)
-	{
-		material.indexOfRefraction = 10.0f;
 	}
 
 	const Handle<Material> materialHandle{ Int32(materialId) };
