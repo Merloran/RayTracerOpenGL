@@ -77,7 +77,7 @@ Void SResourceManager::generate_opengl_texture(Texture& texture)
 		{
 			if (texture.type == ETextureType::HDR)
 			{
-				internalFormat = GL_RGB16F;
+				internalFormat = GL_RGB32F;
 				type = GL_FLOAT;
 			} else {
 				internalFormat = GL_RGB;
@@ -90,7 +90,7 @@ Void SResourceManager::generate_opengl_texture(Texture& texture)
 		{
 			if (texture.type == ETextureType::HDR)
 			{
-				internalFormat = GL_RGBA16F;
+				internalFormat = GL_RGBA32F;
 				type = GL_FLOAT;
 			} else {
 				internalFormat = GL_RGBA;

@@ -31,6 +31,8 @@ Void SRaytraceManager::startup()
 	screen.set_int("accumulated", 0);
 	renderTime = 0.0f;
 	maxBouncesCount = 0;
+	frameLimit = 0;
+	frameCount = 0;
 	backgroundColor = { 0.0f, 0.0f, 0.0f };//{ 0.0f, 0.71f, 0.71f };
 
 	textures.reserve(resourceManager.get_textures().size());
@@ -118,12 +120,13 @@ Void SRaytraceManager::startup()
 			const Mesh& mesh = resourceManager.get_mesh_by_handle(model.meshes[i]);
 			for (Int32 j = 0; j < mesh.indexes.size(); ++j)
 			{
-				indexes.emplace_back(mesh.indexes[j] + indexesOffset);
-				const GpuMaterial& gpuMaterial = materials[*reinterpret_cast<Int32*>(&positionsWithMaterial[mesh.indexes[j] + indexesOffset].w)];
+				UInt32 index = mesh.indexes[j] + indexesOffset;
+				const GpuMaterial& gpuMaterial = materials[*reinterpret_cast<Int32*>(&positionsWithMaterial[index].w)];
 				if (j % 3 == 0 && gpuMaterial.emission != -1)
 				{
-					emissionTriangles.emplace_back(mesh.indexes[j] + indexesOffset);
+					emissionTriangles.emplace_back(indexes.size());
 				}
+				indexes.emplace_back(index);
 			}
 			indexesOffset += mesh.positions.size();
 		}
@@ -228,7 +231,7 @@ Void SRaytraceManager::update(Camera &camera, Float32 deltaTime)
 	}
 
 	screen.use();
-	screen.set_float("invFrameCount", Float32(1.0f / (frameCount - 1)));
+	screen.set_float("invFrameCount", Float32(1.0f / (frameCount)));
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, screenTexture.gpuId);
 	renderManager.draw_quad();
@@ -262,7 +265,7 @@ Void SRaytraceManager::generate_rays(Camera& camera)
 	const glm::ivec2 workGroupsCount = glm::ceil(glm::vec2(screenTexture.size) / glm::vec2(WORKGROUP_SIZE));
 
 	camera.set_camera_changed(false);
-	frameCount = 1;
+	frameCount = 0;
 	const Float32 theta = glm::radians(camera.get_fov());
 	const Float32 h = glm::tan(theta * 0.5f);
 	glm::vec2 viewportSize;
