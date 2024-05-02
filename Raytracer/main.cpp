@@ -87,6 +87,7 @@ Int32 main()
 	
 	//CornellBoxBunny
 	//CornellBox
+	//Box
 	//CornellBoxSphere
 	//SponzaLighted
 	//CornellBoxMonkey

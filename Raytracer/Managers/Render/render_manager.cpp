@@ -46,8 +46,8 @@ Void SRenderManager::startup()
 
 	// Setup style
 	ImGui::StyleColorsDark();
-	ImGuiStyle& style = ImGui::GetStyle();
-	style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+	// ImGuiStyle& style = ImGui::GetStyle();
+	// style.Colors[ImGuiCol_WindowBg].w = 1.0f;
 	Int32 flags;
 	glGetIntegerv(GL_CONTEXT_FLAGS, &flags);
 	if (flags & GL_CONTEXT_FLAG_DEBUG_BIT)
