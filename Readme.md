@@ -1,3 +1,10 @@
+Implemented:
+- Saving image to file
+- BVH accelearation structure on CPU
+- Monte Carlo raytracing with frame accumulation on GPU compute shaders
+- Importance sampling
+- Scattering, Metal, Emmisive and Dielectric materials.
+- Scenes loaded from GLTF files.
 
 Examples of renders:
 
@@ -8,21 +15,7 @@ Parameters:
 - 8 bounces,
 - 36 triangles including 2 emissive triangles.
 
-![Cornell Box Suzanne](Results/CornellBoxMonkey_1024SPP.png)
-
-Parameters:
-- 1024 samples,
-- 8 bounces,
-- 980 triangles including 2 emissive triangles.
-
-![Cornell Box Suzanne side view](Results/CornellBoxMonkey_1024SPP_SideView.png)
-
-Parameters:
-- 1024 samples,
-- 8 bounces,
-- 980 triangles including 2 emissive triangles.
-
-![Cornell Box Suzanne blue side view](Results/CornellBoxMonkey_1500SPP_SideViewBlue.png)
+![Cornell Box Suzanne](Results/CornellBoxMonkey_1024SPP_SideViewBlue.png)
 
 Parameters:
 - 1024 samples,
