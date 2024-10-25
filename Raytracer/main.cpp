@@ -43,7 +43,7 @@ Void camera_gui(Camera& camera)
 }
 
 Bool isRayTraced = false;
-Void info_gui()
+Void info_gui(float deltaTimeMs)
 {
 	if (ImGui::Begin("Render info"))
 	{
@@ -56,7 +56,7 @@ Void info_gui()
 		{
 			raytraceManager.refresh();
 		}
-		ImGui::Text("FPS: %.2f, %.2fms", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
+		ImGui::Text("FPS: %.2f, %.2fms", 1.0f / deltaTimeMs, deltaTimeMs * 1000.0f);
 		ImGui::Text("Accumulated frames: %d", raytraceManager.get_frame_count());
 		ImGui::Checkbox("Ray tracer", &isRayTraced);
 		if (ImGui::Button("Reload Shaders"))
@@ -92,7 +92,7 @@ Int32 main()
 	//SponzaLighted
 	//CornellBoxMonkey
 	//Teapot
-	resourceManager.load_gltf_asset(resourceManager.ASSETS_PATH + "SponzaLighted/SponzaLighted.gltf");
+	resourceManager.load_gltf_asset(resourceManager.ASSETS_PATH + "CornellBox/CornellBox.gltf");
 	resourceManager.load_texture(resourceManager.TEXTURES_PATH + "EnvironmentMap.hdr", "EnvironmentMap", ETextureType::HDR);
 	resourceManager.generate_opengl_resources();
 	//resourceManager.clear_unused_memory();
@@ -119,7 +119,7 @@ Int32 main()
 		ImGui::NewFrame();
 
 		camera_gui(camera);
-		info_gui();
+		info_gui(deltaTimeMs);
 
 		ImGui::Render();
 

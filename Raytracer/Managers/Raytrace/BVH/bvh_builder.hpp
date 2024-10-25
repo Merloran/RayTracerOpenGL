@@ -1,10 +1,12 @@
 #pragma once
 #include "bvh_node.hpp"
 
+struct GPUVertex;
+
 class BVHBuilder
 {
 public:
-	Void create_tree(const std::vector<glm::vec4>& positions, const std::vector<UInt32>& indexes);
+	Void create_tree(const std::vector<GPUVertex>& vertexes, const std::vector<UInt32>& indexes);
 	
 	std::vector<BVHNode> hierarchy;
 	Int32 rootId;

@@ -3,16 +3,18 @@
 #include "../Render/Common/shader.hpp"
 #include "BVH/bvh_builder.hpp"
 
-struct GpuMaterial
+struct GPUMaterial
 {
 	Int32 albedo;
 	Int32 normal;
 	Int32 roughness;
 	Int32 metalness;
+
 	Int32 emission;
 	Float32 indexOfRefraction;
 };
 
+struct GPUVertex;
 struct Camera;
 
 class SRaytraceManager
@@ -46,16 +48,14 @@ private:
 	Shader rayGeneration, rayTrace, screen;
 	BVHBuilder bvh;
 	Texture screenTexture, directionTexture;
-	std::vector<glm::vec4> positionsWithMaterial;
-	std::vector<glm::vec4> normals;
-	std::vector<glm::vec2> uvs;
+	std::vector<GPUVertex> vertexes;
 	std::vector<UInt32> indexes;
 	std::vector<UInt32> emissionTriangles;
 	std::vector<UInt64> textures;
-	std::vector<GpuMaterial> materials;
+	std::vector<GPUMaterial> materials;
 	glm::vec3 originPixel, pixelDeltaU, pixelDeltaV, backgroundColor;
 	Float32 renderTime;
-	UInt32 ssbo[8]; //Positions, Normals, Uvs, Indexes, TextureHandles, Materials, BVHNodes, EmissionTriangles
+	std::array<UInt32, 6> ssbo; //Vertexes, Indexes, TextureHandles, Materials, BVHNodes, EmissionTriangles
 	Int32 frameCount, trianglesCount;
 	Bool shouldRefresh;
 

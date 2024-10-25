@@ -10,6 +10,7 @@
 #include "../Resource/Common/handle.hpp"
 #include "../Resource/Common/material.hpp"
 #include "../Resource/Common/mesh.hpp"
+#include "Common/vertex.hpp"
 #include "BVH/bvh_node.hpp"
 
 SRaytraceManager& SRaytraceManager::get()
@@ -44,7 +45,7 @@ Void SRaytraceManager::startup()
 	materials.reserve(resourceManager.get_materials().size());
 	for (const Material& material : resourceManager.get_materials())
 	{
-		GpuMaterial& gpuMaterial = materials.emplace_back();
+		GPUMaterial& gpuMaterial = materials.emplace_back();
 		gpuMaterial.albedo	  = material.albedo.id;
 		gpuMaterial.normal	  = material.normal.id;
 		gpuMaterial.roughness = material.roughness.id;
@@ -66,9 +67,7 @@ Void SRaytraceManager::startup()
 			indexesSize += mesh.indexes.size();
 		}
 	}
-	positionsWithMaterial.reserve(vertexesSize);
-	normals.reserve(vertexesSize);
-	uvs.reserve(vertexesSize);
+	vertexes.reserve(vertexesSize);
 	indexes.reserve(indexesSize);
 	trianglesCount = Int32(indexesSize / 3);
 	// Predicting emission triangles count
@@ -76,38 +75,16 @@ Void SRaytraceManager::startup()
 
 	for (const Model& model : models)
 	{
-		for (Int32 i = 0; i < model.meshes.size(); ++i)
+		for (UInt64 i = 0; i < model.meshes.size(); ++i)
 		{
 			const Mesh& mesh = resourceManager.get_mesh_by_handle(model.meshes[i]);
-			for (const glm::vec3& position : mesh.positions)
+			for (UInt64 j = 0; j < mesh.positions.size(); ++j)
 			{
-				Int32 materialIdInt = model.materials[i].id;
-				Float32 materialId = *reinterpret_cast<Float32*>(&materialIdInt);
-				positionsWithMaterial.emplace_back(position, materialId);
-			}
-		}
-	}
-
-	for (const Model& model : models)
-	{
-		for (const Handle<Mesh> meshHandle : model.meshes)
-		{
-			const Mesh& mesh = resourceManager.get_mesh_by_handle(meshHandle);
-			for (const glm::vec3 &normal : mesh.normals)
-			{
-				normals.emplace_back(normal, 1.0f);
-			}
-		}
-	}
-
-	for (const Model& model : models)
-	{
-		for (const Handle<Mesh> meshHandle : model.meshes)
-		{
-			const Mesh& mesh = resourceManager.get_mesh_by_handle(meshHandle);
-			for (const glm::vec2 &uv : mesh.uvs)
-			{
-				uvs.emplace_back(uv);
+				GPUVertex& vertex = vertexes.emplace_back();
+				vertex.position   = mesh.positions[j];
+				vertex.normal	  = mesh.normals[j];
+				vertex.uv		  = mesh.uvs[j];
+				vertex.materialId = model.materials[i].id;
 			}
 		}
 	}
@@ -115,13 +92,13 @@ Void SRaytraceManager::startup()
 	Int32 indexesOffset = 0;
 	for (const Model& model : models)
 	{
-		for (Int32 i = 0; i < model.meshes.size(); ++i)
+		for (UInt64 i = 0; i < model.meshes.size(); ++i)
 		{
 			const Mesh& mesh = resourceManager.get_mesh_by_handle(model.meshes[i]);
-			for (Int32 j = 0; j < mesh.indexes.size(); ++j)
+			for (UInt64 j = 0; j < mesh.indexes.size(); ++j)
 			{
 				UInt32 index = mesh.indexes[j] + indexesOffset;
-				const GpuMaterial& gpuMaterial = materials[*reinterpret_cast<Int32*>(&positionsWithMaterial[index].w)];
+				const GPUMaterial& gpuMaterial = materials[vertexes[index].materialId];
 				if (j % 3 == 0 && gpuMaterial.emission != -1)
 				{
 					emissionTriangles.emplace_back(indexes.size());
@@ -132,67 +109,51 @@ Void SRaytraceManager::startup()
 		}
 	}
 
-	bvh.create_tree(positionsWithMaterial, indexes);
+	bvh.create_tree(vertexes, indexes);
 	
     glCreateBuffers(8, &ssbo[0]);
 
-	//Positions
+	//Vertexes
 	glNamedBufferStorage(ssbo[0],
-				 positionsWithMaterial.size()  * sizeof(glm::vec4),
-				 positionsWithMaterial.data(), 
-				 GL_DYNAMIC_STORAGE_BIT);
-
-	//Normals
-	glNamedBufferStorage(ssbo[1],
-				 normals.size() * sizeof(glm::vec4), 
-				 normals.data(),
-				 GL_DYNAMIC_STORAGE_BIT);
-
-	//UV
-	glNamedBufferStorage(ssbo[2],
-				 uvs.size() * sizeof(glm::vec2), 
-				 uvs.data(),
+				 vertexes.size()  * sizeof(GPUVertex),
+				 vertexes.data(),
 				 GL_DYNAMIC_STORAGE_BIT);
 
 	//Indexes
-	glNamedBufferStorage(ssbo[3],
+	glNamedBufferStorage(ssbo[1],
 				 indexes.size() * sizeof(UInt32),
 				 indexes.data(),
 				 GL_DYNAMIC_STORAGE_BIT);
 
 	//Textures
-	glNamedBufferStorage(ssbo[4],
+	glNamedBufferStorage(ssbo[2],
 				 textures.size() * sizeof(UInt64),
 				 textures.data(),
 				 GL_DYNAMIC_STORAGE_BIT);
 
 	//Materials
-	glNamedBufferStorage(ssbo[5],
-				 materials.size() * sizeof(GpuMaterial),
+	glNamedBufferStorage(ssbo[3],
+				 materials.size() * sizeof(GPUMaterial),
 				 materials.data(),
 				 GL_DYNAMIC_STORAGE_BIT);
 
 	//BVHNodes
-	glNamedBufferStorage(ssbo[6],
+	glNamedBufferStorage(ssbo[4],
 				 bvh.hierarchy.size() * sizeof(BVHNode),
 				 bvh.hierarchy.data(),
 				 GL_DYNAMIC_STORAGE_BIT);
 
 	//EmissionTriangles
-	glNamedBufferStorage(ssbo[7],
+	glNamedBufferStorage(ssbo[5],
 				 emissionTriangles.size() * sizeof(UInt32),
 				 emissionTriangles.data(),
 				 GL_DYNAMIC_STORAGE_BIT);
 
 
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo[0]);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo[1]);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo[2]);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, ssbo[3]);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, ssbo[4]);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, ssbo[5]);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, ssbo[6]);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, ssbo[7]);
+	for (UInt64 i = 0; i < ssbo.size(); ++i)
+	{
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, ssbo[i]);
+	}
 }
 
 
@@ -336,7 +297,7 @@ Void SRaytraceManager::reload_shaders()
 
 Void SRaytraceManager::shutdown()
 {
-	glDeleteBuffers(8, ssbo);
+	glDeleteBuffers(ssbo.size(), ssbo.data());
 	glDeleteTextures(1, &screenTexture.gpuId);
 	glDeleteTextures(1, &directionTexture.gpuId);
 	screen.shutdown();

@@ -1,9 +1,11 @@
 #include "bvh_builder.hpp"
 
+#include "../Common/vertex.hpp"
+
 #include <cstdlib>
 #include <fstream>
 
-Void BVHBuilder::create_tree(const std::vector<glm::vec4>& positions, const std::vector<UInt32>& indexes)
+Void BVHBuilder::create_tree(const std::vector<GPUVertex>& vertexes, const std::vector<UInt32>& indexes)
 {
 	if (indexes.size() % 3 != 0)
 	{
@@ -27,9 +29,9 @@ Void BVHBuilder::create_tree(const std::vector<glm::vec4>& positions, const std:
 	for (Int32 triangleId = 0; triangleId < indexes.size(); triangleId += 3)
 	{
 		BVHNode node;
-		const glm::vec3& a = positions[indexes[triangleId]];
-		const glm::vec3& b = positions[indexes[triangleId + 1]];
-		const glm::vec3& c = positions[indexes[triangleId + 2]];
+		const glm::vec3& a = vertexes[indexes[triangleId + 0]].position;
+		const glm::vec3& b = vertexes[indexes[triangleId + 1]].position;
+		const glm::vec3& c = vertexes[indexes[triangleId + 2]].position;
 
 		min(a, b, c, node.min);
 		max(a, b, c, node.max);

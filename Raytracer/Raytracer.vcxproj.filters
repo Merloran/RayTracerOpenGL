@@ -113,5 +113,8 @@
     <ClInclude Include="Managers\Raytrace\Common\photon.hpp">
       <Filter>Pliki nagłówkowe</Filter>
     </ClInclude>
+    <ClInclude Include="Managers\Raytrace\Common\vertex.hpp">
+      <Filter>Pliki nagłówkowe</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
